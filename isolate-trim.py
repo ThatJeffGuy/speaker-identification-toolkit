@@ -16,7 +16,7 @@ console.print("""[bold cyan]
 =====================================
 [/bold cyan]""")
 console.print("This tool isolates and trims audio segments based on speaker metadata.")
-console.print("Input directories for WAV and JSON files, and an output directory, will be created in the same folder as this script.")
+console.print("Three directories will be accessed and created: JSONs, WAVs and Targeted.")
 
 # Define Paths Relative to Script Location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
