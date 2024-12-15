@@ -22,9 +22,9 @@ console.print("This tool will identify target speakers in audio files based on p
 console.print("Ensure the paths to JSON and audio files are correct before proceeding.\n")
 
 # Paths
-JSON_DIR = "NO JSON PATH ENTERED"  # JSON files with all speakers
-AUDIO_DIR = "NO WAVS PATH ENTERED"  # Original WAV files
-MAPPING_FILE = "NO MAPPINGS FILE ENTERED"  # Speaker mapping CSV
+JSON_DIR = "./jsons"  # JSON files with all speakers
+AUDIO_DIR = "./wavs"  # Original WAV files
+MAPPING_FILE = "./mappings.csv"  # Speaker mapping CSV
 
 # Helper Function to Validate Paths
 def validate_path(path, path_type="directory", should_exist=True):
