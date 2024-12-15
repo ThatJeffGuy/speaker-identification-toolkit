@@ -10,10 +10,10 @@ This repository provides a comprehensive toolkit for processing audio and video 
 ### 2. Generate Speaker Diarization Data
 - Run `diarize-dataset.py` to process the extracted WAV files and produce JSON files containing diarization data.
 
-### 3. Identify Target Speaker
+### 3. Identify the Target Speaker
 - Run `identify-speaker.py` to play audio segments from diarization files and interactively map the target speaker.
 
-### 4. Isolate and Trim Target Speaker Audio
+### 4. Isolate and clean-up the Audio
 - Run `isolate-trim.py` to extract and trim the target speaker's audio segments, preparing them for dataset creation.
 
 ## Dependencies
@@ -73,3 +73,4 @@ The scripts automatically create necessary directories and pause execution for u
   - Isolates diarized segments for the target speaker.
   - Trims silence and ensures clips are 30 seconds or shorter.
 - **Dependencies**: `rich`, `pandas`, `ffmpeg`
+  
