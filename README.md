@@ -1,3 +1,16 @@
+---
+tags:
+- diarization
+- torch
+- cuda
+- identifcation
+license: cc-by-nc-4.0
+datasets:
+- pyannote/speaker-diarization
+language:
+- en
+pretty_name: Speaker Identification Toolkit
+---
 # Speaker Identification Toolkit
 
 This repository provides a comprehensive toolkit for processing audio and video files, with a focus on speaker diarization, speaker identification, audio extraction, and dataset creation. By leveraging tools like `ffmpeg`, `pyannote.audio`, and other Python libraries, the scripts enable efficient and accurate workflows for handling audio data.
@@ -5,16 +18,16 @@ This repository provides a comprehensive toolkit for processing audio and video 
 ## Workflow
 
 ### 1. Extract Audio from Videos
-Use `dataset-creation.py` to extract English audio tracks from video files.
+- Run `dataset-creation.py` to extract English audio tracks from video files.
 
 ### 2. Generate Speaker Diarization Data
-Run `diarize-dataset.py` to process the extracted WAV files and produce JSON files containing diarization data.
+- Run `diarize-dataset.py` to process the extracted WAV files and produce JSON files containing diarization data.
 
 ### 3. Identify Target Speaker
-Execute `identify-speaker.py` to play audio segments from diarization files and interactively map the target speaker.
+- Run `identify-speaker.py` to play audio segments from diarization files and interactively map the target speaker.
 
 ### 4. Isolate and Trim Target Speaker Audio
-Use `isolate-trim.py` to extract and trim the target speaker's audio segments, preparing them for dataset creation.
+- Run `isolate-trim.py` to extract and trim the target speaker's audio segments, preparing them for dataset creation.
 
 ## Dependencies
 
