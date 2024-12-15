@@ -56,9 +56,8 @@ This toolkit provides a comprehensive suite of scripts for audio processing and 
 - Token validation is performed before processing.
 - Update your token in the script or provide it at runtime when prompted.
 
-## Notes
+## Notes and Tips
 
-- Ensure all input files are placed in the correct directories before running the scripts.
 - Output files will be saved in the corresponding output directories, which are automatically created if they do not exist.
 - When processing multi-speakers in multi-episode files, like a TV series spanning multiple seasons, it is best practice to listen to a few segments of the speaker before confirming.
 - If you make a mistake, stop the script and remove the bottom most line in your mappings CSV; the script will re-process it on next run.
