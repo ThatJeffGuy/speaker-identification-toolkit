@@ -14,7 +14,8 @@ console.print("""[bold cyan]
 =====================================
 [/bold cyan]""")
 console.print("This tool processes audio files and generates speaker diarization metadata.")
-console.print("Input and output directories will be created in the same folder as this script.")
+console.print("Add media to the WAVs folder, which will automatically be created.")
+console.print("JSONs should be generated automatically in their own folder.")
 
 # Define Paths Relative to Script Location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
