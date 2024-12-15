@@ -1,16 +1,3 @@
----
-tags:
-- diarization
-- torch
-- cuda
-- identifcation
-license: cc-by-nc-4.0
-datasets:
-- pyannote/speaker-diarization
-language:
-- en
-pretty_name: Speaker Identification Toolkit
----
 # Speaker Identification Toolkit
 
 This repository provides a comprehensive toolkit for processing audio and video files, with a focus on speaker diarization, speaker identification, audio extraction, and dataset creation. By leveraging tools like `ffmpeg`, `pyannote.audio`, and other Python libraries, the scripts enable efficient and accurate workflows for handling audio data.
