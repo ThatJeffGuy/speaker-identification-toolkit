@@ -6,15 +6,23 @@ This repository provides a comprehensive toolkit for processing audio and video 
 
 ### 1. Extract Audio from Videos
 - Run `dataset-creation.py` to extract English audio tracks from video files.
+- Now uses `PyDub` instead of `ffmpeg`, extracts at 44100khz PCM-16bit Mono wav files.
+- Uses multi-threading for faster, scalable performance.
+- Optional Script: `organize-videos.py` will extract Season and Episode info from the file names, and rename them accordingly.
+  - This keeps your video files and generated wavs/jsons, uniquenly named like S02E13.wav and S02E13.json, etc.
 
 ### 2. Generate Speaker Diarization Data
 - Run `diarize-dataset.py` to process the extracted WAV files and produce JSON files containing diarization data.
+- Uses `PyDub` instead of `ffmpeg`. Requires a HuggingFace Token.
 
 ### 3. Identify the Target Speaker
 - Run `identify-speaker.py` to play audio segments from diarization files and interactively map the target speaker.
+- Uses `PyAnnote.audio` for playback, for wider performance and compatibility. `playsound` fallback.
+- Interactive, so no multi-threading.
 
 ### 4. Isolate and clean-up the Audio
 - Run `isolate-trim.py` to extract and trim the target speaker's audio segments, preparing them for dataset creation.
+- Uses 'PyDub' instead of 'ffmpeg' to extract audio segments - while similar, pydub was more compatible than ffmpeg.
 
 ## Dependencies
 
@@ -40,37 +48,4 @@ The scripts automatically create necessary directories and pause execution for u
   default="your_hugging_face_token"
   ```
 - Verify directory paths and ensure all dependencies are installed to avoid runtime issues.
-
-## Extended Description
-
-### 1. `dataset-creation.py`
-- **Description**: Extracts English audio tracks from video files and converts them to mono 16-bit PCM WAV format.
-- **Key Features**:
-  - Processes video files in `.mp4` and `.mkv` formats.
-  - Automatically names output files using a sequential naming convention.
-- **Dependencies**: `rich`, `ffmpeg`
-
-### 2. `diarize-dataset.py`
-- **Description**: Processes WAV files to generate JSON files containing speaker diarization data.
-- **Key Features**:
-  - Leverages Hugging Face's `pyannote.audio` for diarization.
-  - Outputs JSON files with timestamps and speaker labels.
-- **Dependencies**: `pyannote.audio`, `rich`
-
-### 3. `identify-speaker.py`
-- **Description**: Plays audio segments from diarization files to help users identify and map the target speaker for isolation.
-- **Key Features**:
-  - Interactive selection of the target speaker.
-  - Maintains a CSV file to map diarization files to speakers.
-- **Recommendations**:
-  - Listen to multiple segments to confirm the target speaker, as segments may contain mixed audio.
-  - If a mistake occurs, update the CSV file to correct mappings.
-- **Dependencies**: `playsound`, `rich`, `pandas`, `ffmpeg`
-
-### 4. `isolate-trim.py`
-- **Description**: Extracts and trims audio segments of the target speaker, splitting them into smaller clips if necessary.
-- **Key Features**:
-  - Isolates diarized segments for the target speaker.
-  - Trims silence and ensures clips are 30 seconds or shorter.
-- **Dependencies**: `rich`, `pandas`, `ffmpeg`
   
