@@ -1,7 +1,11 @@
 import os
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pydub import AudioSegment
 from rich.console import Console
 from rich.prompt import Prompt
+import multiprocessing
 
 # Initialize Rich Console
 console = Console()
@@ -13,9 +17,8 @@ console.print("""[bold cyan]
       SPEAKER DIARIZATION TOOL
 =====================================
 [/bold cyan]""")
-console.print("This tool processes audio files and generates speaker diarization metadata.")
-console.print("Add media to the WAVs folder, which will automatically be created.")
-console.print("JSONs should be generated automatically in their own folder.")
+console.print("This tool processes WAV audio files and generates speaker diarization metadata.")
+console.print("Input and output directories will be created in the same folder as this script.")
 
 # Define Paths Relative to Script Location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,16 +29,8 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, "jsons")
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Prompt User for Hugging Face Token
-HF_TOKEN = Prompt.ask("[bold cyan]Enter your Hugging Face token[/bold cyan]", default="")
-
-# Validate Token
-if not HF_TOKEN or not HF_TOKEN.startswith("hf_"):
-    console.print("[bold red]Error:[/bold red] Invalid Hugging Face token.", style="red")
-    exit(1)
-
 # Pause to allow user to populate audio directory
-console.print(f"[bold yellow]Please add audio files (WAV format) to the directory: {INPUT_DIR}[/bold yellow]")
+console.print(f"[bold yellow]Please add WAV files to the directory: {INPUT_DIR}[/bold yellow]")
 input("\nPress Enter to continue...")
 
 # Validate Audio Files
@@ -44,33 +39,69 @@ if not audio_files:
     console.print(f"[bold red]Error:[/bold red] No WAV files found in: {INPUT_DIR}", style="red")
     exit(1)
 
-# Mocked pipeline for diarization (Replace with actual pipeline initialization)
-def mock_pipeline(file_path):
-    """Mocked diarization function, replace with actual implementation."""
-    return [
-        {"speaker": "SPEAKER_1", "start": 0.0, "end": 10.0},
-        {"speaker": "SPEAKER_2", "start": 10.0, "end": 20.0}
-    ]
+console.print(f"[bold green]Found {len(audio_files)} WAV file(s). Starting processing...[/bold green]")
 
-# Process Audio Files
-console.print(f"[bold green]Found {len(audio_files)} audio file(s). Starting processing...[/bold green]")
-for index, file_name in enumerate(audio_files, start=1):
+from transformers import pipeline
+
+# Prompt User for Hugging Face Token
+HF_TOKEN = Prompt.ask("[bold cyan]Enter your Hugging Face token[/bold cyan]", default="")
+if not HF_TOKEN or not HF_TOKEN.startswith("hf_"):
+    console.print("[bold red]Error:[/bold red] Invalid Hugging Face token.", style="red")
+    exit(1)
+
+# Initialize Diarization Pipeline
+try:
+    diarization_pipeline = pipeline("automatic-speech-recognition", model="pyannote/speaker-diarization", token=HF_TOKEN)
+    console.print("[bold green]Hugging Face token validated. Pipeline initialized successfully.[/bold green]")
+except Exception as e:
+    console.print(f"[bold red]Failed to initialize pipeline:[/bold red] {e}")
+    exit(1)
+
+# Replace mock diarization with the pipeline
+def perform_diarization(audio_path):
+    """Performs speaker diarization using Hugging Face pipeline."""
+    return diarization_pipeline(audio_path)
+
+# Function to process a single audio file
+def process_audio(file_name):
     input_path = os.path.join(INPUT_DIR, file_name)
     output_file = os.path.join(OUTPUT_DIR, f"{os.path.splitext(file_name)[0]}.json")
 
-    console.print(f"Processing: [bold blue]{file_name}[/bold blue] ({index}/{len(audio_files)})")
-
     try:
-        # Perform diarization (Replace `mock_pipeline` with actual diarization pipeline call)
-        diarization_data = mock_pipeline(input_path)
+        console.print(f"[cyan]Processing:[/cyan] {file_name}")
+        start_time = time.time()
+
+        # Load and validate audio using pydub
+        audio = AudioSegment.from_wav(input_path)
+        if audio.frame_rate != 44100 or audio.channels != 1:
+            audio = audio.set_frame_rate(44100).set_channels(1)
+            console.print(f"[yellow]Converted:[/yellow] {file_name} to 44.1kHz mono")
+
+        # Perform diarization (replace mock_diarization with actual function)
+        diarization_data = mock_diarization(input_path)
 
         # Save output to JSON
         with open(output_file, "w") as f:
             json.dump(diarization_data, f, indent=2)
 
-        console.print(f"[bold green]Success:[/bold green] Diarization output saved to: {output_file}", style="green")
+        end_time = time.time()
+        console.print(f"[bold green]Success:[/bold green] Processed {file_name} in {end_time - start_time:.2f}s")
     except Exception as e:
-        console.print(f"[bold red]Error processing {file_name}:[/bold red] {e}", style="red")
+        console.print(f"[bold red]Error processing {file_name}:[/bold red] {e}")
 
-console.print("[bold green]All files processed successfully.[/bold green]")
+# Dynamically set thread count based on CPU cores
+MAX_THREADS = min(8, max(1, multiprocessing.cpu_count() - 1))
+console.print(f"[bold cyan]Using up to {MAX_THREADS} threads for processing...[/bold cyan]")
+
+# Multithreaded Processing
+with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+    futures = [executor.submit(process_audio, file_name) for file_name in audio_files]
+    for future in as_completed(futures):
+        try:
+            future.result()
+        except Exception as e:
+            console.print(f"[bold red]Error during processing:[/bold red] {e}")
+
+console.print("\n[bold green]All files processed successfully.[/bold green]")
+console.print(f"[bold green]Check the '{OUTPUT_DIR}' directory for diarization JSON files.[/bold green]")
 
