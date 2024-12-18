@@ -4,23 +4,23 @@ This repository provides a comprehensive toolkit for processing audio and video 
 
 ## Workflow
 
-### 1. Extract Audio from Videos
+### 1. Extract Audio from Videos - STABLE
 - Run `dataset-creation.py` to extract English audio tracks from video files.
 - Now uses `PyDub` instead of `ffmpeg`, extracts at 44100khz PCM-16bit Mono wav files.
 - Uses multi-threading for faster, scalable performance.
 - Optional Script: `organize-videos.py` will extract Season and Episode info from the file names, and rename them accordingly.
   - This keeps your video files and generated wavs/jsons, uniquenly named like S02E13.wav and S02E13.json, etc.
 
-### 2. Generate Speaker Diarization Data
+### 2. Generate Speaker Diarization Data - STABLE
 - Run `diarize-dataset.py` to process the extracted WAV files and produce JSON files containing diarization data.
 - Uses `PyDub` instead of `ffmpeg`. Requires a HuggingFace Token.
 
-### 3. Identify the Target Speaker
+### 3. Identify the Target Speaker - BETA RELEASE
 - Run `identify-speaker.py` to play audio segments from diarization files and interactively map the target speaker.
 - Uses `PyAnnote.audio` for playback, for wider performance and compatibility. `playsound` fallback.
 - Interactive, so no multi-threading.
 
-### 4. Isolate and clean-up the Audio
+### 4. Isolate and clean-up the Audio - UNDER DEV.
 - Run `isolate-trim.py` to extract and trim the target speaker's audio segments, preparing them for dataset creation.
 - Uses 'PyDub' instead of 'ffmpeg' to extract audio segments - while similar, pydub was more compatible than ffmpeg.
 
@@ -38,14 +38,5 @@ The scripts automatically create necessary directories and pause execution for u
 - **Video Input Directory**: `base-folder/videos`
 - **WAV Output Directory**: `base-folder/wavs`
 - **JSON Output Directory**: `base-folder/jsons`
-- **Speaker Mapping File**: `base-folder/scripts/speaker_mapping.csv`
+- **Speaker Mapping File**: `base-folder/scripts/mappings.csv`
 - **Processed Speaker Output Directory**: `base-folder/targeted`
-
-### Notes
-
-- For `diarize-dataset.py`, you can set the Hugging Face API token directly in the script for prompt-free operation. Replace the placeholder value in the following line:
-  ```python
-  default="your_hugging_face_token"
-  ```
-- Verify directory paths and ensure all dependencies are installed to avoid runtime issues.
-  
