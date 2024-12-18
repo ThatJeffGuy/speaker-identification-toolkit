@@ -5,6 +5,13 @@ from pydub import AudioSegment
 from rich.console import Console
 from pyannote.audio import Pipeline
 import torch
+import logging
+
+# Suppress INFO logs and reproducibility warnings
+logging.getLogger("pyannote.audio").setLevel(logging.WARNING)
+logging.getLogger("pyannote.core").setLevel(logging.WARNING)
+logging.getLogger("speechbrain").setLevel(logging.ERROR)
+logging.getLogger("transformers").setLevel(logging.ERROR)
 
 # Initialize Rich Console
 console = Console()
@@ -23,7 +30,7 @@ console.print("Input and output directories will be created in the same folder a
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_DIR = os.path.join(SCRIPT_DIR, "wavs")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "jsons")
-HF_TOKEN = "NONE"  # HF-TOKEN HERE
+HF_TOKEN = "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"  # User must update this manually
 
 # Ensure Directories Exist
 os.makedirs(INPUT_DIR, exist_ok=True)
@@ -70,10 +77,19 @@ def process_audio(file_name):
 
         # Perform diarization with pipeline
         diarization = pipeline(input_path)
-        diarization_data = [
-            {"speaker": turn[0], "start": turn[1].start, "end": turn[1].end}
-            for turn in diarization.itertracks(yield_label=True)
-        ]
+        diarization_data = []
+        for entry in diarization.itertracks(yield_label=True):
+            if isinstance(entry, tuple) and len(entry) >= 2:
+                turn = entry[0]  # The segment
+                label = entry[-1]  # The speaker label
+                diarization_data.append({
+                    "speaker": label,
+                    "start": turn.start,
+                    "end": turn.end
+                })
+            else:
+                console.print(f"[bold yellow]Unexpected diarization entry format: {entry}[/bold yellow]")
+
 
         # Save output to JSON
         with open(output_file, "w") as f:
@@ -83,6 +99,10 @@ def process_audio(file_name):
         console.print(f"[bold green]Success:[/bold green] Processed {file_name} in {end_time - start_time:.2f}s")
     except Exception as e:
         console.print(f"[bold red]Error processing {file_name}:[/bold red] {e}")
+        proceed = input("Do you want to proceed with the next file? (y/n): ").strip().lower()
+        if proceed != 'y':
+            console.print("[bold red]Exiting processing.[/bold red]")
+            exit(1)
 
 # Sequential Processing
 for file_name in audio_files:
