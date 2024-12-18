@@ -30,7 +30,7 @@ console.print("Input and output directories will be created in the same folder a
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_DIR = os.path.join(SCRIPT_DIR, "wavs")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "jsons")
-HF_TOKEN = "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"  # User must update this manually
+HF_TOKEN = "NONE"  # User must update this manually
 
 # Ensure Directories Exist
 os.makedirs(INPUT_DIR, exist_ok=True)
