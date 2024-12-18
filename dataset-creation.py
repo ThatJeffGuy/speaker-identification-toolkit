@@ -1,89 +1,83 @@
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pydub import AudioSegment
+import re
+import subprocess
 from rich.console import Console
-from rich.prompt import Prompt
-import multiprocessing
+from rich.progress import Progress, BarColumn, TimeElapsedColumn
 
-# Initialize Rich Console
+# Initialize Console
 console = Console()
 console.clear()
 
 # Title Screen
 console.print("""[bold cyan]
 =====================================
-     VIDEO TO AUDIO EXTRACTION TOOL
+     ENG AUDIO EXTRACTION TOOL
 =====================================
 [/bold cyan]""")
-console.print("This tool extracts audio tracks from video files and saves them as WAV files.")
-console.print("Input and output directories will be created in the same folder as this script.")
+console.print("This tool extracts only English audio tracks from video files using FFmpeg.\n")
 
-# Define Paths Relative to Script Location
+# Define Directory Paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-INPUT_DIR = os.path.join(SCRIPT_DIR, "videos")
+VIDEO_DIR = os.path.join(SCRIPT_DIR, "videos")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "wavs")
 
 # Ensure Directories Exist
-os.makedirs(INPUT_DIR, exist_ok=True)
+os.makedirs(VIDEO_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Pause to allow user to populate videos directory
-console.print(f"[bold yellow]Please add video files to the directory: {INPUT_DIR}[/bold yellow]")
-input("\nPress Enter to continue...")
-
-# Process Video Files
-video_files = [f for f in sorted(os.listdir(INPUT_DIR)) if f.endswith(('.mp4', '.mkv', '.avi'))]
+# List Video Files
+video_files = [f for f in os.listdir(VIDEO_DIR) if f.endswith((".mkv", ".mp4", ".avi"))]
 if not video_files:
-    console.print(f"[bold red]Error:[/bold red] No video files found in: {INPUT_DIR}", style="red")
+    console.print(f"[bold yellow]No video files found in '{VIDEO_DIR}'.[/bold yellow]")
     exit(1)
 
-console.print(f"[bold green]Found {len(video_files)} video file(s). Starting processing...[/bold green]")
+console.print(f"[bold green]Found {len(video_files)} video file(s). Starting extraction...[/bold green]")
 
-# Function to process a single file using pydub
-def process_video(file_name):
-    input_path = os.path.join(INPUT_DIR, file_name)
-    output_file = os.path.join(OUTPUT_DIR, f"{os.path.splitext(file_name)[0]}.wav")
+# Function to extract English audio
+def extract_eng_audio(file):
+    input_path = os.path.join(VIDEO_DIR, file)
+    output_path = os.path.join(OUTPUT_DIR, os.path.splitext(file)[0] + "_eng.wav")
 
     try:
-        console.print(f"[cyan]Processing:[/cyan] {file_name}")
-        start_time = time.time()
-        audio = AudioSegment.from_file(input_path)
-        
-        # Check if the audio file already matches the desired settings
-        if audio.frame_rate != 44100 or audio.channels != 1:
-            audio = audio.set_frame_rate(44100).set_channels(1)  # Set to 44.1kHz mono
-        
-        audio.export(output_file, format="wav")  # Export WAV
-        end_time = time.time()
-        console.print(f"[bold green]Success:[/bold green] Extracted to {output_file} in {end_time - start_time:.2f}s")
-    except Exception as e:
-        console.print(f"[bold red]Error processing {file_name}:[/bold red] {e}")
+        # Use FFmpeg to find and extract the English audio track
+        command = [
+            "ffmpeg", "-i", input_path,
+            "-map", "0:m:language:eng",  # Map English audio track
+            "-acodec", "pcm_s16le",      # 16-bit PCM
+            "-ar", "44100",             # 44.1kHz
+            "-ac", "1",                 # Mono audio
+            "-y", output_path            # Overwrite existing file
+        ]
+        subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return file, "Success"
+    except subprocess.CalledProcessError as e:
+        return file, f"Error: {e}"
 
-# Dynamically set thread count based on CPU cores
-MAX_THREADS = min(8, max(1, multiprocessing.cpu_count() - 1))
-console.print(f"[bold cyan]Using up to {MAX_THREADS} threads for processing...[/bold cyan]")
+# Sequential Processing with Progress Bar
+results = []
+with Progress(
+    "[progress.percentage]{task.percentage:>3.0f}%",
+    BarColumn(),
+    TimeElapsedColumn(),
+    console=console
+) as progress:
+    task = progress.add_task("[cyan]Extracting English audio...", total=len(video_files))
 
-# Batch Processing
-total_files = len(video_files)
-batch_size = max(1, total_files // MAX_THREADS)
-console.print(f"[bold cyan]Processing files in batches of {batch_size}...[/bold cyan]")
+    for file in video_files:
+        original, status = extract_eng_audio(file)
+        progress.update(task, advance=1)
 
-def batch_process(files_batch):
-    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        futures = [executor.submit(process_video, file_name) for file_name in files_batch]
-        for future in as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                console.print(f"[bold red]Error during processing:[/bold red] {e}")
+        if status == "Success":
+            progress.console.log(f"[green]Extracted:[/green] {original}")
+        else:
+            progress.console.log(f"[yellow]{status}:[/yellow] {original}")
 
-# Split files into batches
-for i in range(0, total_files, batch_size):
-    batch = video_files[i:i + batch_size]
-    console.print(f"[bold blue]Processing batch {i // batch_size + 1}/{(total_files + batch_size - 1) // batch_size}...[/bold blue]")
-    batch_process(batch)
+        results.append((original, status))
 
-console.print("\n[bold green]All files processed successfully.[/bold green]")
-console.print(f"[bold green]Check the '{OUTPUT_DIR}' directory for extracted WAV files.[/bold green]")
+# Summary
+console.print("\n[bold green]Processing complete![/bold green]")
+for original, status in results:
+    console.print(f"[white]{original}[/white] -> [cyan]{status}[/cyan]")
+
+console.print(f"\n[bold green]Check the '{OUTPUT_DIR}' directory for extracted audio files.[/bold green]")
 
