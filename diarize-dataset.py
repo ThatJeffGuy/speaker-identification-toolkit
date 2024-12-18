@@ -6,6 +6,8 @@ from pydub import AudioSegment
 from rich.console import Console
 from rich.prompt import Prompt
 import multiprocessing
+from pyannote.audio import Pipeline
+import torch
 
 # Initialize Rich Console
 console = Console()
@@ -41,26 +43,22 @@ if not audio_files:
 
 console.print(f"[bold green]Found {len(audio_files)} WAV file(s). Starting processing...[/bold green]")
 
-from transformers import pipeline
-
 # Prompt User for Hugging Face Token
-HF_TOKEN = Prompt.ask("[bold cyan]Enter your Hugging Face token[/bold cyan]", default="")
+HF_TOKEN = Prompt.ask("[bold cyan]Enter your Hugging Face token[/bold cyan]", default="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")
 if not HF_TOKEN or not HF_TOKEN.startswith("hf_"):
     console.print("[bold red]Error:[/bold red] Invalid Hugging Face token.", style="red")
     exit(1)
 
-# Initialize Diarization Pipeline
+# Initialize Pyannote Pipeline with GPU Support
 try:
-    diarization_pipeline = pipeline("automatic-speech-recognition", model="pyannote/speaker-diarization", token=HF_TOKEN)
-    console.print("[bold green]Hugging Face token validated. Pipeline initialized successfully.[/bold green]")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    console.print(f"[bold cyan]Using device: {device}[/bold cyan]")
+    pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization", use_auth_token=HF_TOKEN)
+    pipeline.to(device)
+    console.print("[bold green]Hugging Face token validated. Pipeline initialized successfully on GPU.[/bold green]")
 except Exception as e:
     console.print(f"[bold red]Failed to initialize pipeline:[/bold red] {e}")
     exit(1)
-
-# Replace mock diarization with the pipeline
-def perform_diarization(audio_path):
-    """Performs speaker diarization using Hugging Face pipeline."""
-    return diarization_pipeline(audio_path)
 
 # Function to process a single audio file
 def process_audio(file_name):
@@ -76,9 +74,14 @@ def process_audio(file_name):
         if audio.frame_rate != 44100 or audio.channels != 1:
             audio = audio.set_frame_rate(44100).set_channels(1)
             console.print(f"[yellow]Converted:[/yellow] {file_name} to 44.1kHz mono")
+            audio.export(input_path, format="wav")
 
-        # Perform diarization (replace mock_diarization with actual function)
-        diarization_data = mock_diarization(input_path)
+        # Perform diarization with pipeline
+        diarization = pipeline(input_path)
+        diarization_data = [
+            {"speaker": turn.label, "start": turn.start, "end": turn.end}
+            for turn in diarization.itertracks(yield_label=True)
+        ]
 
         # Save output to JSON
         with open(output_file, "w") as f:
@@ -104,4 +107,3 @@ with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
 
 console.print("\n[bold green]All files processed successfully.[/bold green]")
 console.print(f"[bold green]Check the '{OUTPUT_DIR}' directory for diarization JSON files.[/bold green]")
-
