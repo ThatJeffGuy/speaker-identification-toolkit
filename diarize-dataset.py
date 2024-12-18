@@ -44,7 +44,7 @@ if not audio_files:
 console.print(f"[bold green]Found {len(audio_files)} WAV file(s). Starting processing...[/bold green]")
 
 # Prompt User for Hugging Face Token
-HF_TOKEN = Prompt.ask("[bold cyan]Enter your Hugging Face token[/bold cyan]", default="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")
+HF_TOKEN = Prompt.ask("[bold cyan]Enter your Hugging Face token[/bold cyan]", default="")
 if not HF_TOKEN or not HF_TOKEN.startswith("hf_"):
     console.print("[bold red]Error:[/bold red] Invalid Hugging Face token.", style="red")
     exit(1)
