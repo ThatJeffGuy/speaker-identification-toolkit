@@ -11,9 +11,8 @@ This repository provides a comprehensive toolkit for processing audio and video 
 - Optional Script: `organize-videos.py` will extract Season and Episode info from the file names, and rename them accordingly.
   - This keeps your video files and generated wavs/jsons, uniquenly named like S02E13.wav and S02E13.json, etc.
  
-### 1B. Use UVR or a similar vocal isolation project - EXTERNAL
+### 1B. Use UVR or a similar vocal isolation project - [UVR Project](https://github.com/Anjok07/ultimatevocalremovergui)
  - Diarizing audio with background noise, music, etc. will result in very poor diarization results, ex. singing from background music will be labeled as a speaker, etc.
- - [UVR Project](https://github.com/Anjok07/ultimatevocalremovergui)
 
 ### 2. Generate Speaker Diarization Data - STABLE
 - Run `diarize-dataset.py` to process the extracted WAV files and produce JSON files containing diarization data.
