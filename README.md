@@ -18,11 +18,12 @@ This repository provides a comprehensive toolkit for processing audio and video 
 ### 2. Generate Speaker Diarization Data - STABLE
 - Run `diarize-dataset.py` to process the extracted WAV files and produce JSON files containing diarization data.
 - Uses `PyDub` instead of `ffmpeg`. Requires a HuggingFace Token.
+- Confirms and converts (if necessessary) WAV to SVC/RVC standard, `44100hz PCM-16bit mono`.
 
 ### 3. Identify the Target Speaker - BETA RELEASE
 - Run `identify-speaker.py` to play audio segments from diarization files and interactively map the target speaker.
 - Uses `PyAnnote.audio` for playback, for wider performance and compatibility. `playsound` fallback.
-- Interactive, so no multi-threading.
+- All data processing is performed after identification, with multithreading performance enhancements.
 
 ### 4. Isolate and clean-up the Audio - UNDER DEV.
 - Run `isolate-trim.py` to extract and trim the target speaker's audio segments, preparing them for dataset creation.
