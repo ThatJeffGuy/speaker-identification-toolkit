@@ -25,7 +25,7 @@ This repository provides a comprehensive toolkit for processing audio and video 
 
 ### 4. Isolate and clean-up the Audio - BETA RELEASE
 - Run `isolate-trim.py` to extract and trim the target speaker's audio segments, preparing them for dataset creation.
-- Uses 'PyDub' instead of 'ffmpeg' to extract audio segments - while similar, pydub was more compatible than ffmpeg.
+- Uses `PyDub` instead of `ffmpeg` to extract audio segments - while similar, pydub was more compatible than ffmpeg.
 
 ## Dependencies
 
