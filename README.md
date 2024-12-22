@@ -41,5 +41,5 @@ The scripts automatically create necessary directories and pause execution for u
 - **Video Input Directory**: `base-folder/videos`
 - **WAV Output Directory**: `base-folder/wavs`
 - **JSON Output Directory**: `base-folder/jsons`
-- **Speaker Mapping File**: `base-folder/scripts/mappings.csv`
+- **Speaker Mapping File**: `base-folder/mappings.csv`
 - **Processed Speaker Output Directory**: `base-folder/targeted`
