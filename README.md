@@ -19,7 +19,7 @@ This repository provides a comprehensive toolkit for processing audio and video 
 - Uses `PyDub` instead of `ffmpeg`. Requires a HuggingFace Token.
 - Confirms and converts (if necessessary) WAV to SVC/RVC standard, `44100hz PCM-16bit mono`.
 
-### 3. Identify the Target Speaker - BROKEN - ACTIVE PROJECT
+### 3. Identify the Target Speaker - BETA RELEASE - ACTIVE PROJECT
 - Run `identify-speaker.py` to play audio segments from diarization files and interactively map the target speaker.
 - Uses `PyAnnote.audio` for playback, for wider performance and compatibility. `playsound` fallback.
 
