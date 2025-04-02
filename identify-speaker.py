@@ -1,475 +1,378 @@
 import os
 import json
-import wave
-import numpy as np
-import sounddevice as sd
-from scipy.io import wavfile
 import pandas as pd
+import numpy as np
+from scipy.io import wavfile
 from rich.console import Console
-from rich.prompt import Prompt
-from rich.table import Table
-import logging
-from typing import Optional, Dict, List, Set, Any
-from dataclasses import dataclass
+import sounddevice as sd
 
 # Initialize Rich Console
 console = Console()
-console.clear()
 
-# Configure logging
-logging.basicConfig(filename='identify_speaker.log', level=logging.DEBUG, 
-                   format='%(asctime)s - %(message)s')
+# Common line separator length
+separator = "=" * 45
 
-# Constants
-AUDIO_TEST_FREQUENCY = 440  # Hz
-AUDIO_TEST_DURATION = 0.5   # seconds
+# Clear the terminal screen
+def clear_console():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
-@dataclass
-class SessionState:
-    """Tracks the current session state"""
-    df: Optional[pd.DataFrame] = None
-    new_mappings: List[Dict] = None
-    device_id: Optional[int] = None
-    
-    def __post_init__(self):
-        self.new_mappings = []
+# Title Screen
+def print_title():
+    console.print(
+        f"{separator}\n[bold cyan] SPEAKER IDENTIFICATION TOOL [/bold cyan]\n{separator}\n",
+        justify="left"
+    )
+    console.print(
+        "This tool identifies targeted speakers in audio files based on JSON metadata.",
+        justify="left"
+    )
+    console.print(
+        "[italic yellow]NOTE: Ensure that your audio files have been pre-processed using UVR before running this tool.[/italic yellow]\n",
+        justify="left"
+    )
 
-class AudioDeviceError(Exception):
-    """Raised when there are issues with audio device operations"""
-    pass
+# Menu Display
+def print_menu():
+    console.print(
+        f"{separator}\n[bold cyan] MENU OPTIONS [/bold cyan]\n{separator}\n",
+        justify="left"
+    )
+    menu_block = f"""[bold yellow]
+ [bold magenta]Y[/bold magenta] - Confirm that this is the Targeted Speaker
+ [bold magenta]N[/bold magenta] - Mark this as NOT the Targeted Speaker
+ [bold magenta]A[/bold magenta] - Listen to the same clip again
+ [bold magenta]U[/bold magenta] - Move to the Next Segment for the Same Speaker
+ [bold magenta]X[/bold magenta] - Stop and Continue Processing Files Later
+ [/bold yellow]"""
+    console.print(menu_block, justify="left")
 
-class FileProcessingError(Exception):
-    """Raised when there are issues processing input files"""
-    pass
+# Prompt User to Start
+def prompt_start():
+    start_prompt = console.input(
+        f"[bold yellow]{separator}\nAre you ready to start identifying speakers? (y/n):\n{separator}[/bold yellow]\n"
+    ).strip().lower()
+    while start_prompt not in ["y", "n"]:
+        start_prompt = console.input(
+            "[bold yellow]Invalid input. Please enter 'y' or 'n': [/bold yellow]"
+        ).strip().lower()
+    if start_prompt == "n":
+        console.print("[bold red]Exiting tool. Goodbye![/bold red]")
+        exit(0)
 
-# Initialize global variables
-df = None
-new_mappings = []
-
-def display_screen(screen_type: str = "main", **kwargs) -> None:
-    """Universal display function for all screens
-    
-    Args:
-        screen_type: Type of screen to display ("main", "processing", "status")
-        **kwargs: Additional arguments needed for specific screens
-    """
-    console.clear()
-    
-    # Common header
-    console.print("""[bold cyan]
-=====================================
-     SPEAKER IDENTIFICATION TOOL
-=====================================
-[/bold cyan]""", justify="center")
-    
-    if screen_type == "main":
-        console.print("This tool identifies target speakers in audio files using JSON metadata and user input.", 
-                     justify="center")
-        console.print("[bold yellow]NOTE: Segments you've already processed won't be replayed.[/bold yellow]\n", 
-                     justify="center")
-    
-    # Menu display
-    menu_text = """[bold cyan]=====================================
-Available Actions:
-=====================================[/bold cyan]
-[bold magenta]Y[/bold magenta] - Mark as target speaker  [dim](Save and move to next episode)[/dim]
-[bold magenta]N[/bold magenta] - Not the target speaker  [dim](Skip all segments by this speaker)[/dim]
-[bold magenta]T[/bold magenta] - Next segment           [dim](Move to next segment by same speaker)[/dim]
-[bold magenta]L[/bold magenta] - Replay current clip    [dim](Listen to this segment again)[/dim]
-[bold magenta]X[/bold magenta] - Exit                   [dim](Exit without saving)[/dim]
-====================================="""
-    
-    if screen_type == "processing":
-        data = kwargs.get('data', {})
-        episode_name = kwargs.get('episode_name', '')
-        current_speaker = kwargs.get('current_speaker', '')
-        skipped_speakers = kwargs.get('skipped_speakers', set())
+# Play audio data
+def play_audio(audio_data, sample_rate):
+    """Plays the audio data using sounddevice."""
+    try:
+        # Convert to float32 if needed (sounddevice works better with float)
+        if audio_data.dtype != np.float32:
+            audio_data = audio_data.astype(np.float32)
+            # Normalize if int type was converted to float
+            if np.max(np.abs(audio_data)) > 1.0:
+                audio_data = audio_data / 32768.0  # normalize for 16-bit audio
         
-        # Calculate statistics
-        total_speakers = len({seg['speaker'] for seg in data['segments']})
-        identified_speakers = len(skipped_speakers)
-        speaker_segments = sum(1 for seg in data['segments'] if seg['speaker'] == current_speaker)
-        remaining_speakers = total_speakers - len(skipped_speakers)
-        
-        # Display processing status
-        console.print(f"""
-[yellow]Episode:[/yellow] {episode_name}
-[yellow]Speakers Progress:[/yellow] {identified_speakers}/{total_speakers} processed
-[yellow]Current Speaker:[/yellow] {current_speaker}
-[yellow]Speaker Segments:[/yellow] {speaker_segments} total segments
-[yellow]Remaining Speakers:[/yellow] {remaining_speakers}
-""")
-    
-    console.print(menu_text)
-    
-    if screen_type == "main":
-        console.print("\n[bold green]Current Processing Status:[/bold green]")
-        console.rule()
+        sd.play(audio_data, sample_rate)
+        sd.wait()
+    except Exception as e:
+        console.print(f"[red]Error playing audio: {e}[/red]")
+        # Brief pause to show the error
+        import time
+        time.sleep(2)
 
-# Paths
+# Define Paths Relative to Script Location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_DIR = os.path.join(SCRIPT_DIR, "jsons")
 AUDIO_DIR = os.path.join(SCRIPT_DIR, "wavs")
 MAPPING_FILE = os.path.join(SCRIPT_DIR, "mappings.csv")
+PROGRESS_FILE = os.path.join(SCRIPT_DIR, ".progress")
 
 # Ensure Directories Exist
 os.makedirs(JSON_DIR, exist_ok=True)
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-# Validate Mapping File
-def validate_mapping_file():
-    """Validate and initialize mapping file if needed"""
-    global df
-    try:
-        if not os.path.isfile(MAPPING_FILE) or os.path.getsize(MAPPING_FILE) == 0:
-            df = pd.DataFrame(columns=['episode', 'target_speaker'])
-            df.to_csv(MAPPING_FILE, index=False, mode='w')
-            console.print("[yellow]Created new mapping file[/yellow]")
-            return df
-        
-        df = pd.read_csv(MAPPING_FILE)
-        if list(df.columns) != ['episode', 'target_speaker']:
-            df = pd.DataFrame(columns=['episode', 'target_speaker'])
-            df.to_csv(MAPPING_FILE, index=False, mode='w')
-            console.print("[yellow]Reset mapping file with correct columns[/yellow]")
-        return df
-    except Exception as e:
-        console.print(f"[red]Error with mapping file: {e}[/red]")
-        logging.error(f"Mapping file error: {e}")
-        df = pd.DataFrame(columns=['episode', 'target_speaker'])
-        df.to_csv(MAPPING_FILE, index=False, mode='w')
-        console.print("[yellow]Created new mapping file after error[/yellow]")
-        return df
+# Parameters for processing
+MIN_CLIP_LENGTH = 1  # in seconds (minimum clip length)
+MAX_CLIP_LENGTH = 5  # in seconds (maximum clip length)
+OVERLAP_DURATION = 0.5  # Overlap duration in seconds
 
-# Load initial mapping file
-df = validate_mapping_file()
-processed_count = df['episode'].nunique()
-console.print(f"[bold green]{processed_count} episodes have already been processed.[/bold green]")
-
-def save_progress():
-    """Save current progress to mapping file"""
-    global df, new_mappings
-    if new_mappings:
-        df = pd.concat([df, pd.DataFrame(new_mappings)], ignore_index=True)
-        df.to_csv(MAPPING_FILE, index=False)
-        new_mappings = []  # Clear after saving
-        return True
-    return False
-
-# Menu Constants
-MENU_CHOICES = {
-    'Y': 'Mark as target speaker',
-    'N': 'Not the target speaker',
-    'T': 'Next segment by same speaker',
-    'L': 'Replay current clip',
-    'X': 'Exit'
-}
-
-def select_audio_device() -> int:
-    """Display available audio devices and let user select one
-    
-    Returns:
-        int: Selected device ID
-        
-    Raises:
-        AudioDeviceError: If no valid output devices are found
-    """
-    devices = sd.query_devices()
-    output_devices = [(i, dev) for i, dev in enumerate(devices) 
-                     if dev['max_output_channels'] > 0]
-    
-    if not output_devices:
-        raise AudioDeviceError("No audio output devices found")
-    
-    # Create a table of output devices
-    table = Table(title="Available Audio Output Devices")
-    table.add_column("ID", justify="right", style="cyan")
-    table.add_column("Name", style="green")
-    table.add_column("Channels", justify="right", style="yellow")
-    table.add_column("Default", style="magenta")
-    
-    # Filter for output devices
-    default_output = sd.default.device[1]
-    
-    for i, dev in output_devices:
-        is_default = "✓" if i == default_output else ""
-        table.add_row(
-            str(i),
-            dev['name'],
-            str(dev['max_output_channels']),
-            is_default
+# Mappings.csv File Handling
+def load_or_create_mapping_file():
+    """Load existing mapping file or create a new one if it doesn't exist."""
+    if not os.path.exists(MAPPING_FILE):
+        console.print(
+            f"[yellow]Mapping file not found. Creating a new one at {MAPPING_FILE}...[/yellow]"
         )
-    
-    console.print(table)
-    
-    try:
-        choice = Prompt.ask(
-            "\nSelect audio output device",
-            choices=[str(i) for i, _ in output_devices],
-            default=str(default_output)
+        df_empty = pd.DataFrame(columns=["wav_file", "speaker"])
+        df_empty.to_csv(MAPPING_FILE, index=False)
+        console.print(
+            "[green]A new empty mapping file has been created.[/green]"
         )
-        device_id = int(choice)
-        
-        # Test the selected device
-        console.print(f"\n[yellow]Testing audio device: {devices[device_id]['name']}[/yellow]")
+        return df_empty
+    else:
         try:
-            # Generate test tone with configurable parameters
-            sample_rate = int(devices[device_id]['default_samplerate'])
-            duration = AUDIO_TEST_DURATION
-            test_tone = np.sin(2 * np.pi * AUDIO_TEST_FREQUENCY * 
-                               np.arange(int(duration * sample_rate)) / sample_rate)
-            sd.play(test_tone, sample_rate, device=device_id)
-            sd.wait()
+            return pd.read_csv(MAPPING_FILE)
         except Exception as e:
-            console.print(f"[red]Error testing audio device: {e}[/red]")
-            logging.error(f"Audio device test error: {e}")
-            return default_output  # Fallback to default device
-        return device_id
-    except Exception as e:
-        console.print(f"[red]Error selecting audio device: {e}[/red]")
-        logging.error(f"Audio device selection error: {e}")
-        return default_output  # Fallback to default device
+            console.print(f"[red]Error: Failed to read {MAPPING_FILE}. {e}[/red]")
+            console.print("[yellow]Creating a new mapping file...[/yellow]")
+            df_empty = pd.DataFrame(columns=["wav_file", "speaker"])
+            df_empty.to_csv(MAPPING_FILE, index=False)
+            return df_empty
 
-def play_audio_segment(wav_file: str, start_sec: float, end_sec: float, 
-                      device_id: int, retry_count: int = 2) -> None:
-    """Play a segment of a WAV file
+# File processing and counting
+def get_files_to_process(df_mapping):
+    """Get a list of JSON files that need processing."""
+    # Get all JSON and WAV files
+    json_files = set([f for f in os.listdir(JSON_DIR) if f.endswith('.json')])
+    wav_files = set([f for f in os.listdir(AUDIO_DIR) if f.endswith('.wav')])
     
-    Args:
-        wav_file: Path to WAV file
-        start_sec: Start time in seconds
-        end_sec: End time in seconds
-        device_id: Audio device ID
-        retry_count: Number of retries on playback failure
+    # Extract base filenames for comparison
+    json_bases = {os.path.splitext(f)[0] for f in json_files}
+    wav_bases = {os.path.splitext(f)[0] for f in wav_files}
     
-    Raises:
-        AudioDeviceError: If playback fails after retries
-    """
-    for attempt in range(retry_count):
-        try:
-            with wave.open(wav_file, 'rb') as wav:
-                channels = wav.getnchannels()
-                sample_width = wav.getsampwidth()
-                frame_rate = wav.getframerate()
-                
-                start_frame = int(start_sec * frame_rate)
-                end_frame = int(end_sec * frame_rate)
-                num_frames = end_frame - start_frame
-                
-                wav.setpos(start_frame)
-                audio_data = wav.readframes(num_frames)
-                segment = np.frombuffer(audio_data, dtype=np.int16)
-                segment = segment.astype(np.float32) / np.iinfo(segment.dtype).max
-                
-            # Play the audio
-            try:
-                sd.play(segment, frame_rate, device=device_id)
-                sd.wait()  # Wait until audio is done playing
-                return
-            except sd.PortAudioError as e:
-                if attempt == retry_count - 1:
-                    raise AudioDeviceError(f"Failed to play audio after {retry_count} attempts") from e
-                device_id = select_audio_device()  # Try to get a new device
-                
-        except Exception as e:
-            console.print(f"[red]Error accessing WAV file: {e}[/red]")
-            logging.error(f"WAV file error: {e}")
+    # Find files that have both JSON and WAV
+    common_bases = json_bases.intersection(wav_bases)
+    
+    # Get files that are not already in mappings
+    processed_wav_files = set(df_mapping['wav_file'].tolist())
+    
+    # Files to process are those that have both JSON and WAV but aren't in mappings
+    files_to_process = []
+    for base in common_bases:
+        wav_file = f"{base}.wav"
+        if wav_file not in processed_wav_files:
+            files_to_process.append(f"{base}.json")
+    
+    # Report stats - only show individual counts if there's a mismatch
+    if len(json_files) != len(wav_files) or len(json_bases) != len(wav_bases):
+        console.print(f"[yellow]WARNING: Mismatched files detected[/yellow]")
+        console.print(f"[red]Total JSON files: {len(json_files)}[/red]")
+        console.print(f"[red]Total WAV files: {len(wav_files)}[/red]")
+    else:
+        console.print(f"[green]Found {len(common_bases)} matching pairs of JSON and WAV files[/green]")
+    
+    console.print(f"[bold green]Files with both JSON and WAV: {len(common_bases)}[/bold green]")
+    console.print(f"[bold green]Files already processed: {len(processed_wav_files)}[/bold green]")
+    console.print(f"[bold green]Files remaining to process: {len(files_to_process)}[/bold green]")
+    
+    return files_to_process
 
-def identify_speaker(json_file: str, wav_file: str, 
-                    existing_mapping: pd.DataFrame, 
-                    device_id: int) -> Optional[Dict[str, str]]:
-    """Process a single episode file and identify speakers
+# Memory load mappings and numbers from above, faster processing
+def process_file(json_file, df_mapping):
+    """Processes a single JSON file and extracts segments of target speakers."""
+    json_path = os.path.join(JSON_DIR, json_file)
+    wav_filename = os.path.splitext(json_file)[0] + ".wav"
+    wav_path = os.path.join(AUDIO_DIR, wav_filename)
     
-    Args:
-        json_file: Path to JSON file
-        wav_file: Path to WAV file
-        existing_mapping: DataFrame with existing mappings
-        device_id: Audio device ID
+    console.print(f"[bold cyan]Processing: {json_file}[/bold cyan]")
     
-    Returns:
-        Optional[Dict[str, str]]: Mapping of episode to speaker if found
+    if not os.path.exists(json_path):
+        console.print(f"[red]Error: JSON file not found at {json_path}[/red]")
+        return 0, df_mapping
     
-    Raises:
-        FileProcessingError: If file processing fails
-    """
-    episode_name = os.path.splitext(os.path.basename(json_file))[0]
+    if not os.path.exists(wav_path):
+        console.print(f"[red]Error: WAV file not found at {wav_path}[/red]")
+        return 0, df_mapping
     
-    if episode_name in existing_mapping['episode'].values:
-        console.print(f"[yellow]Episode {episode_name} already processed, skipping...[/yellow]")
-        return None
-
+    # Load JSON data
     try:
-        # Load and validate JSON data
-        with open(json_file, 'r') as f:
+        with open(json_path, "r") as f:
             segments = json.load(f)
-            
-        # Enhance segment validation
+    except Exception as e:
+        console.print(f"[red]Error reading JSON file {json_file}: {e}[/red]")
+        return 0, df_mapping
+    
+    # Load audio data
+    try:
+        sample_rate, audio_data = wavfile.read(wav_path)
+    except Exception as e:
+        console.print(f"[red]Error reading WAV file {wav_filename}: {e}[/red]")
+        return 0, df_mapping
+    
+    # Get unique speakers and count segments for each
+    speaker_segments = {}
+    for segment in segments:
+        speaker = segment.get('speaker', 'unknown')
+        speaker_segments.setdefault(speaker, []).append(segment)
+    
+    num_speakers = len(speaker_segments)
+    console.print(f"[cyan]Found {num_speakers} unique speakers in the JSON file.[/cyan]")
+    
+    # Track identified speakers to avoid duplication
+    identified_speakers = set()
+    segment_count = 0
+    
+    # Process each speaker's segments
+    for speaker, speaker_segs in speaker_segments.items():
+        # Skip if this speaker has been processed
+        if speaker in identified_speakers:
+            continue
+        
+        # Find valid segments (within length constraints)
         valid_segments = []
-        for s in segments:
-            if isinstance(s, dict):
-                speaker = s.get('speaker')
-                start = s.get('start')
-                end = s.get('end')
-                text = s.get('text', '[No transcript available]')
-                
-                if all(x is not None for x in (speaker, start, end)):
-                    s['text'] = text  # Ensure text field exists
-                    valid_segments.append(s)
+        for seg in speaker_segs:
+            start_time = seg.get("start", 0)
+            end_time = seg.get("end", 0)
+            duration = end_time - start_time
+            
+            if MIN_CLIP_LENGTH <= duration <= MAX_CLIP_LENGTH:
+                valid_segments.append(seg)
         
         if not valid_segments:
-            console.print(f"[yellow]No valid segments found in {episode_name}[/yellow]")
-            return None
+            console.print(f"[yellow]No valid segments found for speaker '{speaker}'.[/yellow]")
+            continue
+        
+        # Choose a segment in the middle for better representation
+        segment = valid_segments[len(valid_segments) // 2]
+        
+        start_sample = int(segment["start"] * sample_rate)
+        end_sample = int(segment["end"] * sample_rate)
+        
+        # Ensure valid indices
+        start_sample = max(0, start_sample)
+        end_sample = min(len(audio_data), end_sample)
+        
+        if start_sample >= end_sample:
+            console.print(f"[yellow]Invalid segment time range for speaker '{speaker}'.[/yellow]")
+            continue
+        
+        segment_audio = audio_data[start_sample:end_sample]
+        
+        # Loop for user interaction with this segment
+        while True:
+            clear_console()
+            print_title()
+            console.print(f"[cyan]Current WAV File: {wav_filename}[/cyan]")
+            console.print(f"[cyan]Current Speaker: {speaker} ({len(speaker_segs)} segments)[/cyan]")
+            console.print(f"[cyan]Number of Speakers in JSON: {num_speakers}[/cyan]")
+            console.print(f"[cyan]Segment Time: {segment['start']:.2f}s - {segment['end']:.2f}s[/cyan]")
+            print_menu()
             
-        # Process segments by speaker
-        speaker_segments = {}
-        for s in valid_segments:
-            speaker = s['speaker']
-            if speaker not in speaker_segments:
-                speaker_segments[speaker] = []
-            speaker_segments[speaker].append(s)
-
-        # Sort segments within each speaker group by start time
-        for speaker in speaker_segments:
-            speaker_segments[speaker].sort(key=lambda x: float(x['start']))
-        
-        # Process speakers in order
-        skipped_speakers = set()
-        speakers = sorted(speaker_segments.keys())
-        
-        for current_speaker in speakers:
-            if current_speaker in skipped_speakers:
+            # Play the audio segment
+            play_audio(segment_audio, sample_rate)
+            
+            # Get user's decision
+            user_input = console.input(
+                f"[bold yellow]{separator}\nIs this the targeted speaker? (Y/N/A/U/X):\n{separator}[/bold yellow]\n"
+            ).strip().lower()
+            
+            if user_input == "y":
+                # Check if this wav file already has an entry
+                existing = df_mapping[df_mapping['wav_file'] == wav_filename]
+                if len(existing) > 0:
+                    # Update existing entry
+                    df_mapping.loc[df_mapping['wav_file'] == wav_filename, 'speaker'] = speaker
+                else:
+                    # Add new entry
+                    new_row = pd.DataFrame({'wav_file': [wav_filename], 'speaker': [speaker]})
+                    df_mapping = pd.concat([df_mapping, new_row], ignore_index=True)
+                
+                # Save updated mapping
+                df_mapping.to_csv(MAPPING_FILE, index=False)
+                
+                console.print(f"[green]Speaker '{speaker}' has been identified as the target for {wav_filename}![/green]")
+                identified_speakers.add(speaker)
+                segment_count += 1
+                break
+            
+            elif user_input == "n":
+                console.print(f"[yellow]Speaker '{speaker}' has been marked as NOT the targeted speaker.[/yellow]")
+                identified_speakers.add(speaker)  # Skip this speaker in future iterations
+                break
+            
+            elif user_input == "a":
+                console.print(f"[blue]Replaying the current clip for speaker '{speaker}'.[/blue]")
                 continue
-                
-            for segment in speaker_segments[current_speaker]:
-                replay = True
-                while replay:
-                    # Display status with all segments for current speaker
-                    display_screen(
-                        "processing",
-                        episode_name=episode_name,
-                        data={'segments': segments},  # Keep original segments for stats
-                        current_speaker=current_speaker,
-                        skipped_speakers=skipped_speakers
-                    )
-                    
-                    console.print(f"\n[cyan]Current Segment Text:[/cyan]")
-                    text = segment.get('text', 'No text available')
-                    console.print(f"{text}\n")
-                    
-                    try:
-                        start_time = float(segment['start'])
-                        end_time = float(segment['end'])
-                        if start_time < end_time:
-                            play_audio_segment(wav_file, start_time, end_time, device_id)
-                    except (ValueError, TypeError) as e:
-                        console.print(f"[red]Error with timestamp values: {e}[/red]")
-                        logging.error(f"Timestamp error in {episode_name}: {e}")
-                    
-                    choice = Prompt.ask(
-                        "Your choice",
-                        choices=[k.lower() for k in MENU_CHOICES.keys()],
-                        default="n"
-                    ).upper()
-                    
-                    if choice == 'Y':
-                        return {'episode': episode_name, 'target_speaker': current_speaker}
-                    elif choice == 'N':
-                        skipped_speakers.add(current_speaker)
-                        replay = False
-                        break  # Exit segment loop for this speaker
-                    elif choice == 'T':
-                        replay = False  # Move to next segment
-                    elif choice == 'L':
-                        continue  # Replay current segment
-                    elif choice == 'X':
-                        raise KeyboardInterrupt("User requested exit without saving")
-                
-                if current_speaker in skipped_speakers:
-                    break  # Skip remaining segments for this speaker
-        
-        return None
-                
-    except Exception as e:
-        console.print(f"[red]Error processing {episode_name}: {e}[/red]")
-        logging.error(f"Error processing {episode_name}: {e}")
-        return None
-
-def load_files():
-    """Load and validate input files"""
-    json_files = [os.path.join(JSON_DIR, f) for f in os.listdir(JSON_DIR) if f.endswith(".json")]
-    wav_files = [os.path.join(AUDIO_DIR, f) for f in os.listdir(AUDIO_DIR) if f.endswith(".wav")]
-    
-    if not json_files:
-        console.print(f"[red]No JSON files found in {JSON_DIR}[/red]")
-        logging.error(f"No JSON files found in {JSON_DIR}")
-        return []
-    
-    # Validate matching wav files exist
-    valid_files = []
-    for json_file in json_files:
-        base_name = os.path.splitext(os.path.basename(json_file))[0]
-        wav_file = os.path.join(AUDIO_DIR, f"{base_name}.wav")
-        if os.path.exists(wav_file):
-            valid_files.append(json_file)
-            logging.info(f"Found valid pair: {json_file} -> {wav_file}")
-        else:
-            console.print(f"[yellow]Warning: No matching WAV file for {base_name}[/yellow]")
-            logging.warning(f"No matching WAV file for {json_file}")
-    
-    return valid_files
-
-def main() -> None:
-    """Main application entry point"""
-    session = SessionState()
-    
-    try:
-        display_screen("main")
-        json_files = load_files()
-        
-        if not json_files:
-            raise FileProcessingError("No valid files to process")
             
-        session.device_id = select_audio_device()
-        
-        if not Prompt.ask(
-            f"Found {len(json_files)} files to process. Ready to start?",
-            choices=["y", "n"],
-            default="y"
-        ).lower() == "y":
-            console.print("[bold red]Exiting tool. Goodbye![/bold red]")
-            return
+            elif user_input == "u":
+                # Find the next valid segment for this speaker
+                current_index = speaker_segs.index(segment)
+                next_segments = [s for s in speaker_segs[current_index+1:] 
+                                if MIN_CLIP_LENGTH <= (s["end"] - s["start"]) <= MAX_CLIP_LENGTH]
+                
+                if next_segments:
+                    segment = next_segments[0]
+                    start_sample = int(segment["start"] * sample_rate)
+                    end_sample = int(segment["end"] * sample_rate)
+                    # Ensure valid indices
+                    start_sample = max(0, start_sample)
+                    end_sample = min(len(audio_data), end_sample)
+                    segment_audio = audio_data[start_sample:end_sample]
+                    console.print(f"[blue]Moving to the next segment for speaker '{speaker}'.[/blue]")
+                else:
+                    console.print(f"[yellow]No more valid segments for speaker '{speaker}'.[/yellow]")
+                    break
+            
+            elif user_input == "x":
+                console.print("[red]Stopping processing. You can continue later.[/red]")
+                return segment_count, df_mapping
+            
+            else:
+                console.print("[yellow]Invalid input. Please try again.[/yellow]")
+    
+    if segment_count == 0:
+        console.print(f"[yellow]No targeted speaker identified in {json_file}.[/yellow]")
+        retry = console.input("[yellow]Would you like to re-process this file? (y/n) [/yellow]").strip().lower()
+        if retry == "y":
+            return process_file(json_file, df_mapping)
+    
+    return segment_count, df_mapping
 
-        try:
-            for json_file in json_files:
-                try:
-                    wav_file = os.path.join(AUDIO_DIR, os.path.splitext(os.path.basename(json_file))[0] + ".wav")
-                    result = identify_speaker(json_file, wav_file, df, session.device_id)
-                    if result:
-                        session.new_mappings.append(result)
-                        console.print(f"[green]Mapped {result['episode']} to speaker {result['target_speaker']}[/green]")
-                        save_progress()  # Save after each successful mapping
-                except KeyboardInterrupt as e:
-                    if str(e) == "User requested exit without saving":
-                        console.print("\n[yellow]Exiting without saving...[/yellow]")
-                        return
-                    console.print("\n[yellow]Process interrupted. Exiting without saving...[/yellow]")
-                    return
-
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Process interrupted. Exiting without saving...[/yellow]")
-            return
-        
-        console.print("[bold green]Speaker identification complete.[/bold green]")
-
-    except (AudioDeviceError, FileProcessingError) as e:
-        console.print(f"[red]Fatal error: {e}[/red]")
-        logging.error(f"Fatal error: {e}")
+# The actual process of the script - main code.
+def main():
+    """Main function to run the speaker identification tool."""
+    clear_console()
+    print_title()
+    
+    # Load or create the mapping file
+    df_mapping = load_or_create_mapping_file()
+    console.print(f"[bold green]Loaded speaker mapping for {len(df_mapping)} files.[/bold green]\n")
+    
+    # Get files that need to be processed
+    files_to_process = get_files_to_process(df_mapping)
+    
+    if not files_to_process:
+        console.print("[yellow]No new files to process. All files have been processed.[/yellow]")
         return
-    except KeyboardInterrupt:
-        if session.new_mappings:
-            if Prompt.ask("Save progress before exiting?", choices=["y", "n"]) == "y":
-                save_progress()
-        console.print("\n[yellow]Process interrupted. Exiting...[/yellow]")
-        return
+    
+    prompt_start()
+    
+    # Process each file
+    total_segments = 0
+    processed_files = 0
+    total_files = len(files_to_process)
+    
+    for json_file in files_to_process:
+        console.print(f"[bold cyan]Processing file {processed_files + 1}/{total_files}: {json_file}[/bold cyan]")
+        
+        segments, df_mapping = process_file(json_file, df_mapping)
+        total_segments += segments
+        processed_files += 1
+        
+        # Ask if user wants to continue after each file
+        if processed_files < total_files:
+            continue_prompt = console.input(
+                f"[bold yellow]{separator}\nContinue to next file? (y/n):\n{separator}[/bold yellow]\n"
+            ).strip().lower()
+            
+            if continue_prompt != "y":
+                console.print("[red]Processing paused. You can continue later.[/red]")
+                break
+    
+    # Final summary
+    console.print(f"[bold green]Processing complete![/bold green]")
+    console.print(f"[green]Files processed: {processed_files}/{total_files}[/green]")
+    console.print(f"[green]Total speakers identified: {total_segments}[/green]")
+    console.print(f"[green]Total files in mapping: {len(df_mapping)}[/green]")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        console.print("\n[bold red]Program interrupted by user. Exiting...[/bold red]")
+    except Exception as e:
+        console.print(f"[bold red]An unexpected error occurred: {e}[/bold red]")
+    finally:
+        # Make sure we clean up sounddevice if necessary
+        try:
+            sd.stop()
+        except:
+            pass
