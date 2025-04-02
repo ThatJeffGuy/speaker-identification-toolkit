@@ -33,7 +33,7 @@ Ensure the following are installed:
 
 ## Configuration
 
-The scripts automatically create necessary directories and pause execution for users to populate them with required data. Ensure the following directory structure is in place:
+Ensure the following directory structure is in place:
 
 - **Video Input Directory**: `base-folder/videos`
 - **WAV Output Directory**: `base-folder/wavs`
