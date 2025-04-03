@@ -48,6 +48,7 @@ python dataset-creation.py
 This script extracts English audio tracks from the video files in the `videos` directory and saves them as WAV files in the `wavs` directory.
 
 **Features:**
+- HF_TOKEN Required - Edit script before execution.
 - Automatically detects English audio tracks
 - Converts to mono 16-bit PCM at 44.1kHz for optimal processing
 - Multi-threaded processing for faster extraction
