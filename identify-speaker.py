@@ -18,6 +18,9 @@ console = Console(width=CONSOLE_WIDTH)
 def clear_console():
     os.system('cls' if os.name == 'nt' else 'clear')
 
+# Constants
+SEPARATOR = "=" * CONSOLE_WIDTH
+
 # Title Screen
 def print_title():
     console.print(Panel(

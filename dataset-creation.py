@@ -9,12 +9,16 @@ from rich.text import Text
 import multiprocessing
 import json
 
-# Initialize Console
-console = Console()
-console.clear()
+# Initialize Rich Console with a fixed width
+CONSOLE_WIDTH = 50
+console = Console(width=CONSOLE_WIDTH)
+
+# Clear the terminal screen
+def clear_console():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
 # Constants
-SEPARATOR = "=" 50
+SEPARATOR = "=" * CONSOLE_WIDTH
 
 # Title Screen
 def print_title():
