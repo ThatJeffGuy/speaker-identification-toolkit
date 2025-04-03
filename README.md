@@ -10,9 +10,8 @@ Renames video files by extracting their SxxEyy (Season/Episode) tags.
 **Features:**
 - Automatically extracts season and episode tags from filenames
 - Multi-threaded processing for faster operations
-- Graceful exit handling with Ctrl+C support
+- Graceful error exits - new users to the toolkit will see more descriptive errors!
 - Detailed progress reporting with Rich console output
-- "Press any key to exit" prompt to prevent terminal window from closing immediately
 
 ### 2. dataset-creation.py
 Extracts English audio tracks from video files using FFmpeg with essential metadata passthrough.
@@ -93,4 +92,5 @@ The scripts expect the following directory structure:
 
 - For speaker diarization, you need a valid Hugging Face token in `diarize-dataset.py`
 - Using good quality audio sources will significantly improve diarization results
-- GPU acceleration is recommended for the diarization process
+- CPU processing is working on all scripts, however it's STRONGLY advised to run the `diarize-dataset.py` on the GPU
+- All scripts will automaticly use CUDA utilization where applicable. Sorry AMD.
