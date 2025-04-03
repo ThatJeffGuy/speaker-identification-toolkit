@@ -108,10 +108,8 @@ The SID Toolkit creates and uses the following directory structure:
 
 ## Tips for Best Results
 
-1. **Use high-quality source videos** for better audio extraction.
-2. **Run audio through vocal isolators** before diarization for cleaner speaker detection.
-3. **Listen to multiple segments per speaker** to ensure correct speaker identification.
-4. **Confirm speaker identity across episodes** for consistency.
+1. **Run audio through vocal isolators** such as UVR, before diarization for cleaner speaker detection.
+2. **Listen to multiple segments per speaker** during identification, to ensure correct speaker identification.
 
 ## Troubleshooting
 - **Hugging Face token issues**: Update the `HF_TOKEN` variable in `diarize-dataset.py` with your valid token.
