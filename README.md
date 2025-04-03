@@ -18,7 +18,7 @@ This repository provides a comprehensive toolkit for processing audio and video 
 - Run `diarize-dataset.py` to process the extracted WAV files and produce JSON files containing diarization data.
 - Uses `PyDub` instead of `ffmpeg`. Requires a HuggingFace Token.
 
-### 3. Identify the Target Speaker - BETA RELEASE - ACTIVE PROJECT
+### 3. Identify the Target Speaker - RELEASE CANDIDATE 1 - ALMOST STABLE
 - Run `identify-speaker.py` to play audio segments from diarization files and interactively map the target speaker.
 
 ### 4. Isolate and clean-up the Audio - BETA RELEASE
