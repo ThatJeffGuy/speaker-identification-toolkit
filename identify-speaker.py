@@ -4,13 +4,15 @@ import pandas as pd
 import numpy as np
 from scipy.io import wavfile
 from rich.console import Console
+from rich.panel import Panel
+from rich.align import Align
+from rich.text import Text
+from rich.table import Table
 import sounddevice as sd
 
-# Initialize Rich Console
-console = Console()
-
-# Common line separator length
-separator = "=" * 45
+# Initialize Rich Console with a fixed width
+CONSOLE_WIDTH = 50
+console = Console(width=CONSOLE_WIDTH)
 
 # Clear the terminal screen
 def clear_console():
@@ -18,45 +20,111 @@ def clear_console():
 
 # Title Screen
 def print_title():
-    console.print(
-        f"{separator}\n[bold cyan] SPEAKER IDENTIFICATION TOOL [/bold cyan]\n{separator}\n",
-        justify="left"
+    console.print(Panel(
+        Align("[bold cyan]SPEAKER IDENTIFICATION TOOL[/bold cyan]", "center"),
+        border_style="cyan",
+        width=CONSOLE_WIDTH
+    ))
+    
+    note_text = (
+        "This tool interactively identifies a targeted "
+        "speaker in an audio file, using JSON metadata.\n\n"
+        "[italic yellow]NOTE: For the best results, run your audio "
+        "through UVR or a similar isolation project. "
+        "If you don't, groans, machines wirring, "
+        "background music vocals among other things "
+        "will get marked as a valid speaker.[/italic yellow]"
     )
-    console.print(
-        "This tool interactively identifies a targeted\nspeaker in an audio file, using JSON metadata.",
-        justify="left"
-    )
-    console.print(
-        "[italic yellow]NOTE: For the best results, run your audio\nthrough UVR or a similar isolation project.\nIf you don't, groans, machines wirring,\nbackground music vocals among other things\nwill get marked as a valid speaker.[/italic yellow]\n",
-        justify="left"
-    )
+    
+    console.print(Panel(
+        Align(note_text, "center"),
+        border_style="blue",
+        width=CONSOLE_WIDTH
+    ))
 
 # Menu Display
 def print_menu():
-    console.print(
-        f"{separator}\n[bold cyan] MENU OPTIONS [/bold cyan]\n{separator}\n",
-        justify="left"
+    menu_items = [
+        "[bold magenta]Y[/bold magenta] - Confirm that this is the Targeted Speaker",
+        "[bold magenta]N[/bold magenta] - Mark this as NOT the Targeted Speaker",
+        "[bold magenta]A[/bold magenta] - Listen to the same clip again",
+        "[bold magenta]U[/bold magenta] - Move to the Next Segment for the Same Speaker",
+        "[bold magenta]X[/bold magenta] - Stop and Continue Processing Files Later"
+    ]
+    
+    menu_text = "\n".join(menu_items)
+    
+    console.print(Panel(
+        Align("[bold cyan]MENU OPTIONS[/bold cyan]", "center"),
+        border_style="cyan",
+        width=CONSOLE_WIDTH
+    ))
+    
+    console.print(Panel(
+        menu_text,
+        border_style="yellow",
+        width=CONSOLE_WIDTH
+    ))
+
+# Display file and speaker status
+def print_status(wav_filename, speaker, num_speakers, speakers_checked, segment, is_repeating):
+    status_table = Table(width=CONSOLE_WIDTH-4, box=None, show_header=False)
+    status_table.add_column("Key", style="cyan")
+    status_table.add_column("Value")
+    
+    status_table.add_row("File", wav_filename)
+    
+    if is_repeating:
+        status_table.add_row(
+            "Speaker", 
+            f"[cyan]{speaker}[/cyan] ([cyan]{speakers_checked}/{num_speakers}[/cyan]) [bold red](REPEATING)[/bold red]"
+        )
+    else:
+        status_table.add_row(
+            "Speaker", 
+            f"[cyan]{speaker}[/cyan] ([cyan]{speakers_checked}/{num_speakers}[/cyan])"
+        )
+    
+    status_table.add_row(
+        "Segment", 
+        f"[cyan]{segment['start']:.2f}s - {segment['end']:.2f}s[/cyan]"
     )
-    menu_block = f"""[bold yellow]
- [bold magenta]Y[/bold magenta] - Confirm that this is the Targeted Speaker
- [bold magenta]N[/bold magenta] - Mark this as NOT the Targeted Speaker
- [bold magenta]A[/bold magenta] - Listen to the same clip again
- [bold magenta]U[/bold magenta] - Move to the Next Segment for the Same Speaker
- [bold magenta]X[/bold magenta] - Stop and Continue Processing Files Later
- [/bold yellow]"""
-    console.print(menu_block, justify="left")
+    
+    console.print(Panel(
+        Align("[bold cyan]CURRENT STATUS[/bold cyan]", "center"),
+        border_style="cyan",
+        width=CONSOLE_WIDTH
+    ))
+    
+    console.print(Panel(
+        status_table,
+        border_style="blue",
+        width=CONSOLE_WIDTH
+    ))
 
 # Prompt User to Start
 def prompt_start():
-    start_prompt = console.input(
-        f"[bold yellow]{separator}\nAre you ready to start identifying speakers? (y/n):\n{separator}[/bold yellow]\n"
-    ).strip().lower()
+    console.print(Panel(
+        Align("[bold yellow]Are you ready to start identifying speakers?[/bold yellow]", "center"),
+        border_style="yellow",
+        width=CONSOLE_WIDTH
+    ))
+    
+    start_prompt = console.input("\n(y/n): ").strip().lower()
     while start_prompt not in ["y", "n"]:
-        start_prompt = console.input(
-            "[bold yellow]Invalid input. Please enter 'y' or 'n': [/bold yellow]"
-        ).strip().lower()
+        console.print(Panel(
+            Align("[bold red]Invalid input. Please enter 'y' or 'n'[/bold red]", "center"),
+            border_style="red",
+            width=CONSOLE_WIDTH
+        ))
+        start_prompt = console.input("\n(y/n): ").strip().lower()
+    
     if start_prompt == "n":
-        console.print("[bold red]Exiting tool. Goodbye![/bold red]")
+        console.print(Panel(
+            Align("[bold red]Exiting tool. Goodbye![/bold red]", "center"),
+            border_style="red",
+            width=CONSOLE_WIDTH
+        ))
         exit(0)
 
 # Play audio data
@@ -73,10 +141,31 @@ def play_audio(audio_data, sample_rate):
         sd.play(audio_data, sample_rate)
         sd.wait()
     except Exception as e:
-        console.print(f"[red]Error playing audio: {e}[/red]")
+        console.print(Panel(
+            Align(f"[bold red]Error playing audio: {e}[/bold red]", "center"),
+            border_style="red",
+            width=CONSOLE_WIDTH
+        ))
         # Brief pause to show the error
         import time
         time.sleep(2)
+
+# Get user decision
+def get_user_decision():
+    console.print(Panel(
+        Align("[bold yellow]Is this the targeted speaker?[/bold yellow]", "center"),
+        border_style="yellow",
+        width=CONSOLE_WIDTH
+    ))
+    return console.input("\n(Y/N/A/U/X): ").strip().lower()
+
+# Show status message
+def show_status_message(message, style="green"):
+    console.print(Panel(
+        Align(message, "center"),
+        border_style=style,
+        width=CONSOLE_WIDTH
+    ))
 
 # Define Paths Relative to Script Location
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -98,21 +187,29 @@ OVERLAP_DURATION = 0.5  # Overlap duration in seconds
 def load_or_create_mapping_file():
     """Load existing mapping file or create a new one if it doesn't exist."""
     if not os.path.exists(MAPPING_FILE):
-        console.print(
-            f"[yellow]Mapping file not found. Creating a new one at {MAPPING_FILE}...[/yellow]"
+        show_status_message(
+            f"Mapping file not found. Creating a new one at {MAPPING_FILE}...",
+            style="yellow"
         )
         df_empty = pd.DataFrame(columns=["wav_file", "speaker"])
         df_empty.to_csv(MAPPING_FILE, index=False)
-        console.print(
-            "[green]A new empty mapping file has been created.[/green]"
+        show_status_message(
+            "A new empty mapping file has been created.",
+            style="green"
         )
         return df_empty
     else:
         try:
             return pd.read_csv(MAPPING_FILE)
         except Exception as e:
-            console.print(f"[red]Error: Failed to read {MAPPING_FILE}. {e}[/red]")
-            console.print("[yellow]Creating a new mapping file...[/yellow]")
+            show_status_message(
+                f"Error: Failed to read {MAPPING_FILE}. {e}",
+                style="red"
+            )
+            show_status_message(
+                "Creating a new mapping file...",
+                style="yellow"
+            )
             df_empty = pd.DataFrame(columns=["wav_file", "speaker"])
             df_empty.to_csv(MAPPING_FILE, index=False)
             return df_empty
@@ -143,32 +240,50 @@ def get_files_to_process(df_mapping):
     
     # Report stats - only show individual counts if there's a mismatch
     if len(json_files) != len(wav_files) or len(json_bases) != len(wav_bases):
-        console.print(f"[yellow]WARNING: Mismatched files detected[/yellow]")
-        console.print(f"[red]Total JSON files: {len(json_files)}[/red]")
-        console.print(f"[red]Total WAV files: {len(wav_files)}[/red]")
+        show_status_message(
+            "WARNING: Mismatched files detected",
+            style="yellow"
+        )
+        show_status_message(
+            f"Total JSON files: {len(json_files)}",
+            style="red"
+        )
+        show_status_message(
+            f"Total WAV files: {len(wav_files)}",
+            style="red"
+        )
     else:
-        console.print(f"[green]Found {len(common_bases)} matching pairs of JSON and WAV files[/green]")
+        show_status_message(
+            f"Found {len(common_bases)} matching pairs of JSON and WAV files",
+            style="green"
+        )
     
-    console.print(f"[bold green]Files already processed: {len(processed_wav_files)}[/bold green]")
-    console.print(f"[bold green]Files remaining to process: {len(files_to_process)}[/bold green]")
+    show_status_message(
+        f"Files already processed: {len(processed_wav_files)}",
+        style="green"
+    )
+    show_status_message(
+        f"Files remaining to process: {len(files_to_process)}",
+        style="green"
+    )
     
     return files_to_process
 
-# Memory load mappings and numbers from above, faster processing
+# Process a single file
 def process_file(json_file, df_mapping):
     """Processes a single JSON file and extracts segments of target speakers."""
     json_path = os.path.join(JSON_DIR, json_file)
     wav_filename = os.path.splitext(json_file)[0] + ".wav"
     wav_path = os.path.join(AUDIO_DIR, wav_filename)
     
-    console.print(f"[bold cyan]Processing: {json_file}[/bold cyan]")
+    show_status_message(f"Processing: {json_file}", style="cyan")
     
     if not os.path.exists(json_path):
-        console.print(f"[red]Error: JSON file not found at {json_path}[/red]")
+        show_status_message(f"Error: JSON file not found at {json_path}", style="red")
         return 0, df_mapping, False
     
     if not os.path.exists(wav_path):
-        console.print(f"[red]Error: WAV file not found at {wav_path}[/red]")
+        show_status_message(f"Error: WAV file not found at {wav_path}", style="red")
         return 0, df_mapping, False
     
     # Load JSON data
@@ -176,14 +291,14 @@ def process_file(json_file, df_mapping):
         with open(json_path, "r") as f:
             segments = json.load(f)
     except Exception as e:
-        console.print(f"[red]Error reading JSON file {json_file}: {e}[/red]")
+        show_status_message(f"Error reading JSON file {json_file}: {e}", style="red")
         return 0, df_mapping, False
     
     # Load audio data
     try:
         sample_rate, audio_data = wavfile.read(wav_path)
     except Exception as e:
-        console.print(f"[red]Error reading WAV file {wav_filename}: {e}[/red]")
+        show_status_message(f"Error reading WAV file {wav_filename}: {e}", style="red")
         return 0, df_mapping, False
     
     # Get unique speakers and count segments for each
@@ -193,7 +308,7 @@ def process_file(json_file, df_mapping):
         speaker_segments.setdefault(speaker, []).append(segment)
     
     num_speakers = len(speaker_segments)
-    console.print(f"[cyan]Found {num_speakers} unique speakers in the JSON file.[/cyan]")
+    show_status_message(f"Found {num_speakers} unique speakers in the JSON file.", style="cyan")
     
     # Track identified speakers to avoid duplication
     identified_speakers = set()
@@ -217,7 +332,7 @@ def process_file(json_file, df_mapping):
                 valid_segments.append(seg)
         
         if not valid_segments:
-            console.print(f"[yellow]No valid segments found for speaker '{speaker}'.[/yellow]")
+            show_status_message(f"No valid segments found for speaker '{speaker}'.", style="yellow")
             speakers_checked += 1
             continue
         
@@ -232,7 +347,7 @@ def process_file(json_file, df_mapping):
         end_sample = min(len(audio_data), end_sample)
         
         if start_sample >= end_sample:
-            console.print(f"[yellow]Invalid segment time range for speaker '{speaker}'.[/yellow]")
+            show_status_message(f"Invalid segment time range for speaker '{speaker}'.", style="yellow")
             speakers_checked += 1
             continue
         
@@ -247,26 +362,14 @@ def process_file(json_file, df_mapping):
         while True:
             clear_console()
             print_title()
-            console.print(f"[cyan]Current WAV File: {wav_filename}[/cyan]")
-            
-            # Add warning if we're repeating segments
-            if is_repeating:
-                console.print(f"[cyan]Current Speaker: {speaker} ({len(speaker_segs)} segments) [bold red](REPEATING SEGMENTS)[/bold red][/cyan]")
-            else:
-                console.print(f"[cyan]Current Speaker: {speaker} ({len(speaker_segs)} segments)[/cyan]")
-                
-            console.print(f"[cyan]Number of Speakers in JSON: {num_speakers}[/cyan]")
-            console.print(f"[cyan]Speakers Checked: {speakers_checked}/{num_speakers}[/cyan]")
-            console.print(f"[cyan]Segment Time: {segment['start']:.2f}s - {segment['end']:.2f}s[/cyan]")
+            print_status(wav_filename, speaker, num_speakers, speakers_checked, segment, is_repeating)
             print_menu()
             
             # Play the audio segment
             play_audio(segment_audio, sample_rate)
             
             # Get user's decision
-            user_input = console.input(
-                f"[bold yellow]{separator}\nIs this the targeted speaker? (Y/N/A/U/X):\n{separator}[/bold yellow]\n"
-            ).strip().lower()
+            user_input = get_user_decision()
             
             if user_input == "y":
                 # Check if this wav file already has an entry
@@ -282,20 +385,29 @@ def process_file(json_file, df_mapping):
                 # Save updated mapping
                 df_mapping.to_csv(MAPPING_FILE, index=False)
                 
-                console.print(f"[green]Speaker '{speaker}' has been identified as the target for {wav_filename}![/green]")
+                show_status_message(
+                    f"Speaker '{speaker}' has been identified as the target for {wav_filename}!",
+                    style="green"
+                )
                 identified_speakers.add(speaker)
                 segment_count += 1
                 speakers_checked += 1
                 break
             
             elif user_input == "n":
-                console.print(f"[yellow]Speaker '{speaker}' has been marked as NOT the targeted speaker.[/yellow]")
+                show_status_message(
+                    f"Speaker '{speaker}' has been marked as NOT the targeted speaker.",
+                    style="yellow"
+                )
                 identified_speakers.add(speaker)  # Skip this speaker in future iterations
                 speakers_checked += 1
                 break
             
             elif user_input == "a":
-                console.print(f"[blue]Replaying the current clip for speaker '{speaker}'.[/blue]")
+                show_status_message(
+                    f"Replaying the current clip for speaker '{speaker}'.",
+                    style="blue"
+                )
                 continue
             
             elif user_input == "u":
@@ -305,12 +417,18 @@ def process_file(json_file, df_mapping):
                                 if MIN_CLIP_LENGTH <= (s["end"] - s["start"]) <= MAX_CLIP_LENGTH]
                 
                 if next_segments:
+                    # We have more segments to go through
                     segment = next_segments[0]
                     # Check if we've already seen this segment
                     if segment["start"] in seen_segments:
                         is_repeating = True
+                        show_status_message(
+                            f"Now repeating segments for speaker '{speaker}'.",
+                            style="yellow"
+                        )
                     else:
                         seen_segments.add(segment["start"])
+                        is_repeating = False  # Reset in case we previously set it to True
                         
                     start_sample = int(segment["start"] * sample_rate)
                     end_sample = int(segment["end"] * sample_rate)
@@ -318,7 +436,10 @@ def process_file(json_file, df_mapping):
                     start_sample = max(0, start_sample)
                     end_sample = min(len(audio_data), end_sample)
                     segment_audio = audio_data[start_sample:end_sample]
-                    console.print(f"[blue]Moving to the next segment for speaker '{speaker}'.[/blue]")
+                    show_status_message(
+                        f"Moving to the next segment for speaker '{speaker}'.",
+                        style="blue"
+                    )
                 else:
                     # If we've run out of segments, start over from the beginning
                     valid_segments = [s for s in speaker_segs 
@@ -327,6 +448,10 @@ def process_file(json_file, df_mapping):
                     if valid_segments:
                         segment = valid_segments[0]
                         is_repeating = True  # Mark that we're now repeating segments
+                        show_status_message(
+                            f"Restarting from the beginning for speaker '{speaker}'. All segments will be repeated.",
+                            style="yellow"
+                        )
                         
                         start_sample = int(segment["start"] * sample_rate)
                         end_sample = int(segment["end"] * sample_rate)
@@ -334,32 +459,55 @@ def process_file(json_file, df_mapping):
                         start_sample = max(0, start_sample)
                         end_sample = min(len(audio_data), end_sample)
                         segment_audio = audio_data[start_sample:end_sample]
-                        console.print(f"[yellow]Restarting from the beginning for speaker '{speaker}'.[/yellow]")
+                        
+                        # Reset seen_segments to only include the first one we're showing again
+                        seen_segments = {segment["start"]}
                     else:
-                        console.print(f"[yellow]No valid segments for speaker '{speaker}'.[/yellow]")
+                        show_status_message(
+                            f"No valid segments for speaker '{speaker}'.",
+                            style="yellow"
+                        )
                         break
             
             elif user_input == "x":
-                console.print("[red]Stopping processing. You can continue later.[/red]")
+                show_status_message(
+                    "Stopping processing. You can continue later.",
+                    style="red"
+                )
                 return segment_count, df_mapping, True  # Added flag to indicate user wants to exit
             
             else:
-                console.print("[yellow]Invalid input. Please try again.[/yellow]")
+                show_status_message(
+                    "Invalid input. Please try again.",
+                    style="yellow"
+                )
     
     # Check if all speakers were evaluated but none were identified as the target
     if speakers_checked >= num_speakers and segment_count == 0:
-        console.print(f"[bold red]No targeted speaker identified in {wav_filename} after checking all {num_speakers} speakers.[/bold red]")
+        show_status_message(
+            f"No targeted speaker identified in {wav_filename} after checking all {num_speakers} speakers.",
+            style="red"
+        )
         
         # Ask the user if they want to reprocess or skip
-        reprocess_prompt = console.input(
-            f"[bold yellow]{separator}\nWould you like to reprocess this file or skip? (R for reprocess/S for skip):\n{separator}[/bold yellow]\n"
-        ).strip().lower()
+        console.print(Panel(
+            Align("[bold yellow]Would you like to reprocess this file or skip?[/bold yellow]", "center"),
+            border_style="yellow",
+            width=CONSOLE_WIDTH
+        ))
+        reprocess_prompt = console.input("\n(R for reprocess/S for skip): ").strip().lower()
         
         if reprocess_prompt == "r":
-            console.print(f"[blue]Reprocessing {wav_filename}...[/blue]")
+            show_status_message(
+                f"Reprocessing {wav_filename}...",
+                style="blue"
+            )
             return process_file(json_file, df_mapping)
         else:
-            console.print(f"[yellow]Skipping {wav_filename}. No entry will be made in mappings.csv.[/yellow]")
+            show_status_message(
+                f"Skipping {wav_filename}. No entry will be made in mappings.csv.",
+                style="yellow"
+            )
             return 0, df_mapping, False
     
     return segment_count, df_mapping, False  # Added flag (False = don't exit processing loop)
@@ -372,13 +520,13 @@ def main():
     
     # Load or create the mapping file
     df_mapping = load_or_create_mapping_file()
-    console.print(f"[bold green]Loaded speaker mapping for {len(df_mapping)} files.[/bold green]\n")
+    show_status_message(f"Loaded speaker mapping for {len(df_mapping)} files.", style="green")
     
     # Get files that need to be processed
     files_to_process = get_files_to_process(df_mapping)
     
     if not files_to_process:
-        console.print("[yellow]No new files to process. All files have been processed.[/yellow]")
+        show_status_message("No new files to process. All files have been processed.", style="yellow")
         return
     
     prompt_start()
@@ -389,7 +537,7 @@ def main():
     total_files = len(files_to_process)
     
     for json_file in files_to_process:
-        console.print(f"[bold cyan]Processing file {processed_files + 1}/{total_files}: {json_file}[/bold cyan]")
+        show_status_message(f"Processing file {processed_files + 1}/{total_files}: {json_file}", style="cyan")
         
         segments, df_mapping, exit_requested = process_file(json_file, df_mapping)
         total_segments += segments
@@ -397,32 +545,43 @@ def main():
         
         # If user requested to exit (by pressing 'X'), break the loop
         if exit_requested:
-            console.print("[red]Exiting as requested. Progress saved.[/red]")
+            show_status_message("Exiting as requested. Progress saved.", style="red")
             break
         
         # Ask if user wants to continue after each file (only if not the last file)
         if processed_files < total_files:
-            continue_prompt = console.input(
-                f"[bold yellow]{separator}\nContinue to next file? (y/n):\n{separator}[/bold yellow]\n"
-            ).strip().lower()
+            console.print(Panel(
+                Align("[bold yellow]Continue to next file?[/bold yellow]", "center"),
+                border_style="yellow",
+                width=CONSOLE_WIDTH
+            ))
+            continue_prompt = console.input("\n(y/n): ").strip().lower()
             
             if continue_prompt != "y":
-                console.print("[red]Processing paused. You can continue later.[/red]")
+                show_status_message("Processing paused. You can continue later.", style="red")
                 break
     
     # Final summary
-    console.print(f"[bold green]Processing complete![/bold green]")
-    console.print(f"[green]Files processed: {processed_files}/{total_files}[/green]")
-    console.print(f"[green]Total speakers identified: {total_segments}[/green]")
-    console.print(f"[green]Total files in mapping: {len(df_mapping)}[/green]")
+    show_status_message("Processing complete!", style="green")
+    show_status_message(f"Files processed: {processed_files}/{total_files}", style="green")
+    show_status_message(f"Total speakers identified: {total_segments}", style="green")
+    show_status_message(f"Total files in mapping: {len(df_mapping)}", style="green")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        console.print("\n[bold red]Program interrupted by user. Exiting...[/bold red]")
+        console.print(Panel(
+            Align("[bold red]Program interrupted by user. Exiting...[/bold red]", "center"),
+            border_style="red",
+            width=CONSOLE_WIDTH
+        ))
     except Exception as e:
-        console.print(f"[bold red]An unexpected error occurred: {e}[/bold red]")
+        console.print(Panel(
+            Align(f"[bold red]An unexpected error occurred: {e}[/bold red]", "center"),
+            border_style="red",
+            width=CONSOLE_WIDTH
+        ))
     finally:
         # Make sure we clean up sounddevice if necessary
         try:
