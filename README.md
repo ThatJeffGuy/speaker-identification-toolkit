@@ -114,11 +114,8 @@ The SID Toolkit creates and uses the following directory structure:
 4. **Confirm speaker identity across episodes** for consistency.
 
 ## Troubleshooting
-
-- **Missing FFmpeg**: Install FFmpeg and ensure it's in your system PATH.
 - **Hugging Face token issues**: Update the `HF_TOKEN` variable in `diarize-dataset.py` with your valid token.
-- **Audio playback problems**: Ensure your system has a working audio output device.
-- **GPU acceleration**: If available, use GPU acceleration by installing CUDA for significantly faster processing.
+- **GPU acceleration**: If available, use GPU acceleration by installing CUDA for significantly faster processing. Script automatically detects and uses GPU when available.
 
 ## Advanced Customization
 
@@ -127,8 +124,8 @@ Each script contains configurable parameters at the top of the file that can be 
 - Change minimum/maximum clip lengths
 - Adjust overlap durations
 - Modify audio sample rates and formats
-- Configure threading behavior
 
 ## License
 
-This project is open-source and available for personal and commercial use.
+CC BY-NC-SA
+This license lets you share, tweak, and build upon my work non-commercially, as long as you credit me and license your new creations under the identical terms.
