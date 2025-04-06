@@ -273,6 +273,8 @@ def get_files_to_process(df_mapping):
     return files_to_process
 
 # Process a single file
+# Modify the process_file function to exit early when a target speaker is identified
+
 def process_file(json_file, df_mapping):
     """Processes a single JSON file and extracts segments of target speakers."""
     json_path = os.path.join(JSON_DIR, json_file)
@@ -392,10 +394,19 @@ def process_file(json_file, df_mapping):
                     f"Speaker '{speaker}' has been identified as the target for {wav_filename}!",
                     style="green"
                 )
-                identified_speakers.add(speaker)
-                segment_count += 1
-                speakers_checked += 1
-                break
+                
+                # NEW: Additional confirmation message about stopping file processing
+                show_status_message(
+                    f"Target speaker identified! Skipping remaining speakers in this file.",
+                    style="green"
+                )
+                
+                # Pause for a moment to let the user see the messages
+                import time
+                time.sleep(2)
+                
+                # Return immediately after identifying a target speaker
+                return 1, df_mapping, False  # 1 segment, don't exit processing loop
             
             elif user_input == "n":
                 show_status_message(
