@@ -1,6 +1,8 @@
-# Speaker Identification Toolkit (SID Toolkit)
+# SID Toolkit
 
 The SID Toolkit is a collection of Python scripts for extracting, analyzing, and processing audio from video files, with a focus on speaker identification and isolation. It helps you extract and organize audio segments of specific speakers from video content.
+
+After manually identifying about 10 minutes of your targeted speaker, you can run the cross-reference script to automatically identify and compile additional voice data across your entire collection, saving significant time when processing large datasets.
 
 ## Installation
 
