@@ -27,6 +27,9 @@ The scripts require the following dependencies:
 3. **Diarize Speakers**: Run `diarize-dataset.py` to document timestamps of all speakers (creates JSONs)
 4. **Identify Target Speakers**: Run `identify-speaker.py` to mark your targeted speaker
 5. **Isolate Audio**: Run `isolate-trim.py` to automatically extract all segments of your targeted speaker (exports to `targeted` directory)
+6. **Cross Reference**: Run `speaker-cross-reference.py` to save time with identifying the same speaker across multiple files.
+       NOTE: NOT STABLE YET - DO NOT USE - APRIL 6 2025
+       Note: Requires about 10 minutes of manually selected (`identify-speaker.py`) audio, or about 3-5 TV-length episodes for 95% accuracy or higher.
 
 ## Directory Structure
 The scripts expect the following directory structure:
