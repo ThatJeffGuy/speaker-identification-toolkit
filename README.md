@@ -1,11 +1,17 @@
-# Speaker Identification Toolkit / SID Toolkit
+# Speaker Identification Toolkit (SID Toolkit)
 
-The SID Toolkit is a collection of Python scripts for extracting, analyzing, and processing audio from video files, with a focus on speaker identification and isolation.
+The SID Toolkit is a collection of Python scripts for extracting, analyzing, and processing audio from video files, with a focus on speaker identification and isolation. It helps you extract and organize audio segments of specific speakers from video content.
+
+## Installation
+
+1. Clone this repository
+2. Create VENV, Conda, or a similar isolated environment
+3. Install requirements: `pip install -r requirements.txt` - note: `ffmpeg` required, installed separately
 
 ## Requirements
 
 The scripts require the following dependencies:
-- Python 3.6+
+- Python 3.12+ (recommended for best compatibility)
 - Rich (for console output)
 - FFmpeg (for audio extraction)
 - pyannote.audio (for speaker diarization)
@@ -13,41 +19,22 @@ The scripts require the following dependencies:
 - pandas (for data handling)
 - sounddevice (for audio playback)
 - numpy/scipy (for audio processing)
-
-## Installation
-
-1. Clone this repository
-2. Install Python requirements: `pip install -r requirements.txt`
-3. Install FFmpeg according to your operating system
+- CUDA-compatible GPU (recommended for diarization)
 
 ## Usage Workflow
-
-1. **Organize Videos**: Run `organize-videos.py` to standardize video filenames.
-2. **Extract Audio**: Run `dataset-creation.py` to extract English audio tracks
-3. **Diarize Speakers**: Run `diarize-dataset.py` to identify different speakers
-4. **Identify Target Speakers**: Run `identify-speaker.py` to mark speakers of interest
-5. **Isolate Audio**: Run `isolate-trim.py` to extract audio segments of target speakers
+1. **Organize Videos**: Run `organize-videos.py` to standardize and organize filenames
+2. **Extract Audio**: Run `dataset-creation.py` to extract English audio tracks (creates WAVs)
+3. **Diarize Speakers**: Run `diarize-dataset.py` to document timestamps of all speakers (creates JSONs)
+4. **Identify Target Speakers**: Run `identify-speaker.py` to mark your targeted speaker
+5. **Isolate Audio**: Run `isolate-trim.py` to automatically extract all segments of your targeted speaker (exports to `targeted` directory)
 
 ## Directory Structure
-
 The scripts expect the following directory structure:
 ```
-.
-├── dataset-creation.py
-├── diarize-dataset.py
-├── identify-speaker.py
-├── isolate-trim.py
-├── organize-videos.py
-├── videos/          # Source video files
-├── wavs/            # Extracted audio files
-├── jsons/           # Speaker diarization data
-└── targeted/        # Isolated speaker audio clips
-```
-
 ## Notes
 
 - For speaker diarization, you need a valid Hugging Face token in `diarize-dataset.py`
 - Using good quality audio sources will significantly improve diarization results
-- CPU processing is working on all scripts, however it's STRONGLY advised to run the `diarize-dataset.py` on the GPU
-- All scripts will automaticly use CUDA utilization where applicable. Sorry AMD.
-- Once at the `diarize-dataset.py` stage, note that filenames must match, JSON and WAV.
+- CPU processing works for all scripts, but it's STRONGLY advised to run `diarize-dataset.py` on a GPU
+- All scripts will automatically use CUDA acceleration where applicable (AMD GPUs not supported)
+- The filenames between WAV and JSON files must match exactly for the scripts to work properly
