@@ -47,4 +47,4 @@ The toolkit works with the following directory structure:
 - Using good quality audio sources will significantly improve diarization results
 - CPU processing works for all scripts, but it's STRONGLY advised to run `diarize-dataset.py` on a GPU
 - All scripts will automatically use CUDA acceleration where applicable (AMD GPUs not supported)
-- The filenames between WAV and JSON files must match exactly for the scripts to work properly
+- All filenames must match - JSON, Video, WAVs, everything must have the same filename
