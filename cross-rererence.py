@@ -17,10 +17,63 @@ import pickle
 import sounddevice as sd
 import time
 from pathlib import Path
+import warnings
+import logging
+import signal
+import atexit
+
+# Suppress all warnings
+warnings.filterwarnings("ignore")
+
+# Suppress all logging except critical errors
+logging.basicConfig(level=logging.CRITICAL)
+
+# Specifically suppress logs from these libraries
+for logger_name in ["pyannote", "speechbrain", "transformers", "torch", "numpy", "sklearn"]:
+    logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 
 # Check if torch is available
 if not torch.cuda.is_available():
     print("Warning: CUDA not available. Processing will be slower.")
+
+# Initialize Rich Console with a fixed width
+CONSOLE_WIDTH = 60
+console = Console(width=CONSOLE_WIDTH)
+
+# Global flag for exit requests
+exit_requested = False
+
+# Signal handler for graceful exit
+def signal_handler(sig, frame):
+    global exit_requested
+    exit_requested = True
+    console.print("\n[bold yellow]Interrupt received. Finishing current tasks and exiting gracefully...[/bold yellow]")
+    # Don't exit immediately, let the program exit cleanly
+
+# Register signal handler
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+# Exit handler to ensure clean exit with a pause
+def exit_handler():
+    console.print("\n[bold cyan]Press any key to exit...[/bold cyan]")
+    # Use msvcrt on Windows to capture any key without requiring Enter
+    try:
+        import msvcrt
+        msvcrt.getch()
+    except ImportError:
+        # Fallback for non-Windows platforms
+        input()
+
+# Register exit function
+atexit.register(exit_handler)
+
+# Function to check if user requested exit
+def check_exit_requested():
+    if exit_requested:
+        console.print("[bold yellow]Exit requested. Cleaning up...[/bold yellow]")
+        return True
+    return False
 
 # Initialize Rich Console with a fixed width
 CONSOLE_WIDTH = 60
@@ -270,6 +323,45 @@ def cluster_embeddings(embeddings_list, n_clusters=None):
         min_clusters = max(2, unique_original_speakers // 2)
         max_clusters = min(unique_original_speakers * 2, len(X) // 2)
         
+        # Use a heuristic algorithm
+        n_clusters = min(max(min_clusters, 
+                           int(unique_original_speakers * 1.2)), 
+                       max_clusters)
+        
+        console.print(f"[green]Using estimated number of global speakers: {n_clusters}[/green]")
+    
+# Function to cluster embeddings across files
+def cluster_embeddings(embeddings_list, n_clusters=None):
+    """Cluster embeddings across files to identify the same speakers."""
+    if not embeddings_list:
+        return []
+    
+    # Extract embeddings and metadata
+    X = []
+    metadata = []
+    
+    for file_emb in embeddings_list:
+        for emb in file_emb:
+            X.append(emb["embedding"])
+            metadata.append({
+                "file": emb["file"],
+                "original_speaker": emb["speaker"],
+                "start": emb["start"],
+                "end": emb["end"]
+            })
+    
+    # Convert to numpy array
+    X = np.array(X)
+    
+    # Determine number of clusters if not specified
+    if n_clusters is None:
+        # Estimate based on number of unique original speaker labels
+        unique_original_speakers = len(set(m["original_speaker"] for m in metadata))
+        
+        # Set a reasonable range - between half and double the original count
+        min_clusters = max(2, unique_original_speakers // 2)
+        max_clusters = min(unique_original_speakers * 2, len(X) // 2)
+        
         # Use a heuristic or let the user decide
         n_clusters = min(max(min_clusters, 
                            int(unique_original_speakers * 1.2)), 
@@ -283,15 +375,31 @@ def cluster_embeddings(embeddings_list, n_clusters=None):
             n_clusters = int(user_input.strip())
             console.print(f"[green]Using {n_clusters} clusters as specified.[/green]")
     
-    # Cluster the embeddings
-    clustering = AgglomerativeClustering(
-        n_clusters=n_clusters,
-        affinity='cosine',
-        linkage='average'
-    )
-    
-    # Perform clustering
-    labels = clustering.fit_predict(X)
+    # Try different initialization based on scikit-learn version
+    try:
+        # For newer scikit-learn versions
+        clustering = AgglomerativeClustering(
+            n_clusters=n_clusters,
+            affinity='cosine',
+            linkage='average'
+        )
+        # Perform clustering
+        labels = clustering.fit_predict(X)
+    except TypeError:
+        # For older scikit-learn versions
+        from sklearn.metrics import pairwise_distances
+        # Calculate distance matrix using cosine metric
+        distance_matrix = pairwise_distances(X, metric='cosine')
+        
+        # Initialize without affinity parameter
+        clustering = AgglomerativeClustering(
+            n_clusters=n_clusters,
+            linkage='average',
+            connectivity=None,
+            compute_full_tree='auto'
+        )
+        # Fit using the precomputed distance matrix
+        labels = clustering.fit_predict(distance_matrix)
     
     # Add cluster labels to metadata
     for i, label in enumerate(labels):
@@ -362,6 +470,11 @@ def verify_clusters(cluster_metadata):
     verified_clusters = {}
     
     for speaker, examples in cluster_examples.items():
+        # Check if exit was requested
+        if check_exit_requested():
+            console.print("[bold yellow]Exit requested during verification. Saving partial results...[/bold yellow]")
+            break
+            
         clear_console()
         console.print(Panel(
             Align(f"[bold cyan]Verifying Cluster: {speaker}[/bold cyan]", "center"),
@@ -390,10 +503,18 @@ def verify_clusters(cluster_metadata):
         
         # Play each example
         for i, example in enumerate(examples, 1):
+            # Check for exit request
+            if check_exit_requested():
+                break
+                
             console.print(f"[bold cyan]Playing sample {i}...[/bold cyan]")
             play_audio_clip(example["file"], example["start"], example["end"])
             time.sleep(0.5)  # small pause between clips
         
+        # If exit was requested during playback, break the loop
+        if check_exit_requested():
+            break
+            
         # Ask user for confirmation
         user_input = console.input(f"\n[bold yellow]Is this a consistent voice throughout all samples? (y/n): [/bold yellow]").strip().lower()
         
@@ -420,6 +541,9 @@ def verify_clusters(cluster_metadata):
         if speaker in verified_clusters:
             item["global_speaker"] = verified_clusters[speaker]["new_name"]
             item["is_verified"] = verified_clusters[speaker]["is_verified"]
+        else:
+            # For speakers we didn't verify (if we exited early)
+            item["is_verified"] = False
     
     return cluster_metadata, verified_clusters
 
@@ -480,161 +604,200 @@ def update_mappings_with_global_ids(global_df):
     except Exception as e:
         console.print(f"[red]Error updating mappings file: {e}[/red]")
 
-# Main function
 def main():
     """Main function to run the cross-file speaker recognition tool."""
-    clear_console()
-    print_title()
-    
-    # Load Speaker Mapping
-    if not os.path.exists(MAPPING_FILE):
-        console.print(f"[bold red]Error:[/bold red] Speaker mapping file not found: {MAPPING_FILE}", style="red")
-        console.print(f"[yellow]Please run the identify-speaker.py script first to create speaker mappings.[/yellow]")
-        return
-    
     try:
-        df_mapping = pd.read_csv(MAPPING_FILE)
-        if 'wav_file' not in df_mapping.columns or 'speaker' not in df_mapping.columns:
-            console.print(f"[bold red]Error:[/bold red] Invalid mapping file format. Expected columns 'wav_file' and 'speaker'.", style="red")
+        clear_console()
+        print_title()
+        
+        # Load Speaker Mapping
+        if not os.path.exists(MAPPING_FILE):
+            console.print(f"[bold red]Error:[/bold red] Speaker mapping file not found: {MAPPING_FILE}", style="red")
+            console.print(f"[yellow]Please run the identify-speaker.py script first to create speaker mappings.[/yellow]")
             return
-    except Exception as e:
-        console.print(f"[red]Error: Failed to read {MAPPING_FILE}. {e}[/red]")
-        return
-    
-    console.print(f"[bold green]Loaded speaker mapping for {len(df_mapping)} files.[/bold green]")
-    
-    # Create file processing list
-    files_to_process = []
-    
-    for _, row in df_mapping.iterrows():
-        wav_file = row['wav_file']
-        target_speaker = row['speaker']
         
-        if pd.isna(target_speaker) or target_speaker == "":
-            continue
-            
-        files_to_process.append((wav_file, target_speaker))
-    
-    if not files_to_process:
-        console.print("[bold yellow]No files to process. All mappings are either empty or already processed.[/bold yellow]")
-        return
-    
-    # Check for existing global mapping
-    if os.path.exists(GLOBAL_MAPPING_FILE):
-        console.print(f"[bold yellow]Global mapping file already exists: {GLOBAL_MAPPING_FILE}[/bold yellow]")
-        user_input = console.input("[bold yellow]Do you want to recreate it? (y/n): [/bold yellow]").strip().lower()
-        if user_input != 'y':
-            console.print("[yellow]Using existing global mapping file.[/yellow]")
-            return
-    
-    # Load embedding model
-    try:
-        model, model_type = load_embedding_model()
-    except Exception as e:
-        console.print(f"[bold red]Failed to load embedding model: {e}[/bold red]")
-        return
-    
-    # Process files to extract embeddings
-    console.print(f"[bold green]Processing {len(files_to_process)} files for speaker embeddings...[/bold green]")
-    
-    # Create a progress bar
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        console=console
-    ) as progress:
-        task = progress.add_task("[cyan]Extracting speaker embeddings...", total=len(files_to_process))
-        
-        # Process files in parallel
-        MAX_THREADS = min(8, max(1, multiprocessing.cpu_count() - 1))
-        successful_files = []
-        failed_files = []
-        
-        with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-            futures = {executor.submit(process_file_embeddings, file_data, model, model_type): file_data for file_data in files_to_process}
-            
-            for future in as_completed(futures):
-                file_data = futures[future]
-                try:
-                    wav_file, count, status = future.result()
-                    
-                    if status == "Success" or "already exist" in status:
-                        successful_files.append((wav_file, count))
-                        progress.console.log(f"[green]Processed:[/green] {wav_file} ({count} embeddings)")
-                    else:
-                        failed_files.append((wav_file, status))
-                        progress.console.log(f"[red]Failed:[/red] {wav_file} - {status}")
-                except Exception as e:
-                    failed_files.append((file_data[0], str(e)))
-                    progress.console.log(f"[red]Error:[/red] {file_data[0]} - {e}")
-                
-                progress.update(task, advance=1)
-    
-    # Load all embeddings
-    console.print("[bold cyan]Loading all speaker embeddings for clustering...[/bold cyan]")
-    all_embeddings = []
-    
-    # List all embedding files
-    embedding_files = [f for f in os.listdir(EMBEDDINGS_DIR) if f.endswith("_embeddings.pkl")]
-    
-    if not embedding_files:
-        console.print("[bold red]No embedding files found in embeddings directory.[/bold red]")
-        return
-    
-    # Load each embedding file
-    for file in embedding_files:
-        file_path = os.path.join(EMBEDDINGS_DIR, file)
         try:
-            with open(file_path, "rb") as f:
-                embeddings = pickle.load(f)
-                if embeddings:  # Only add if the file has embeddings
-                    all_embeddings.append(embeddings)
+            df_mapping = pd.read_csv(MAPPING_FILE)
+            if 'wav_file' not in df_mapping.columns or 'speaker' not in df_mapping.columns:
+                console.print(f"[bold red]Error:[/bold red] Invalid mapping file format. Expected columns 'wav_file' and 'speaker'.", style="red")
+                return
         except Exception as e:
-            console.print(f"[red]Error loading {file}: {e}[/red]")
-    
-    if not all_embeddings:
-        console.print("[bold red]No valid embeddings found.[/bold red]")
-        return
-    
-    console.print(f"[bold green]Loaded embeddings from {len(all_embeddings)} files.[/bold green]")
-    
-    # Cluster embeddings
-    console.print("[bold cyan]Clustering speaker embeddings across files...[/bold cyan]")
-    cluster_results = cluster_embeddings(all_embeddings)
-    
-    if not cluster_results:
-        console.print("[bold red]Clustering failed. No results.[/bold red]")
-        return
-    
-    # Verify clusters
-    console.print("[bold cyan]Verifying speaker clusters...[/bold cyan]")
-    user_input = console.input("[bold yellow]Do you want to verify speaker clusters? (y/n): [/bold yellow]").strip().lower()
-    
-    if user_input == 'y':
-        verified_results, verified_clusters = verify_clusters(cluster_results)
+            console.print(f"[red]Error: Failed to read {MAPPING_FILE}. {e}[/red]")
+            return
         
-        # Save results
-        save_global_mapping(verified_results)
-    else:
-        # Save results without verification
-        save_global_mapping(cluster_results)
+        console.print(f"[bold green]Loaded speaker mapping for {len(df_mapping)} files.[/bold green]")
+        
+        # Create file processing list
+        files_to_process = []
+        
+        for _, row in df_mapping.iterrows():
+            wav_file = row['wav_file']
+            target_speaker = row['speaker']
+            
+            if pd.isna(target_speaker) or target_speaker == "":
+                continue
+                
+            files_to_process.append((wav_file, target_speaker))
+        
+        if not files_to_process:
+            console.print("[bold yellow]No files to process. All mappings are either empty or already processed.[/bold yellow]")
+            return
+        
+        # Check for existing global mapping
+        if os.path.exists(GLOBAL_MAPPING_FILE):
+            console.print(f"[bold yellow]Global mapping file already exists: {GLOBAL_MAPPING_FILE}[/bold yellow]")
+            user_input = console.input("[bold yellow]Do you want to recreate it? (y/n): [/bold yellow]").strip().lower()
+            if user_input != 'y':
+                console.print("[yellow]Using existing global mapping file.[/yellow]")
+                return
+        
+        # Check for exit request after each interactive step
+        if check_exit_requested():
+            return
+                    
+        # Load embedding model
+        try:
+            model, model_type = load_embedding_model()
+        except Exception as e:
+            console.print(f"[bold red]Failed to load embedding model: {e}[/bold red]")
+            return
+        
+        # Process files to extract embeddings
+        console.print(f"[bold green]Processing {len(files_to_process)} files for speaker embeddings...[/bold green]")
+        
+        # Create a progress bar
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            task = progress.add_task("[cyan]Extracting speaker embeddings...", total=len(files_to_process))
+            
+            # Process files in parallel
+            MAX_THREADS = min(8, max(1, multiprocessing.cpu_count() - 1))
+            successful_files = []
+            failed_files = []
+            
+            with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+                futures = {executor.submit(process_file_embeddings, file_data, model, model_type): file_data for file_data in files_to_process}
+                
+                for future in as_completed(futures):
+                    # Check if exit was requested
+                    if check_exit_requested():
+                        # Cancel pending futures
+                        for f in futures:
+                            if not f.done():
+                                f.cancel()
+                        break
+                    
+                    file_data = futures[future]
+                    try:
+                        wav_file, count, status = future.result()
+                        
+                        if status == "Success" or "already exist" in status:
+                            successful_files.append((wav_file, count))
+                            progress.console.log(f"[green]Processed:[/green] {wav_file} ({count} embeddings)")
+                        else:
+                            failed_files.append((wav_file, status))
+                            progress.console.log(f"[red]Failed:[/red] {wav_file} - {status}")
+                    except Exception as e:
+                        failed_files.append((file_data[0], str(e)))
+                        progress.console.log(f"[red]Error:[/red] {file_data[0]} - {e}")
+                    
+                    progress.update(task, advance=1)
+        
+        # Check if we should exit
+        if check_exit_requested():
+            console.print("[bold yellow]Exit requested. Stopping processing.[/bold yellow]")
+            return
+        
+        # Load all embeddings
+        console.print("[bold cyan]Loading all speaker embeddings for clustering...[/bold cyan]")
+        all_embeddings = []
+        
+        # List all embedding files
+        embedding_files = [f for f in os.listdir(EMBEDDINGS_DIR) if f.endswith("_embeddings.pkl")]
+        
+        if not embedding_files:
+            console.print("[bold red]No embedding files found in embeddings directory.[/bold red]")
+            return
+        
+        # Load each embedding file
+        for file in embedding_files:
+            # Check for exit request
+            if check_exit_requested():
+                break
+                
+            file_path = os.path.join(EMBEDDINGS_DIR, file)
+            try:
+                with open(file_path, "rb") as f:
+                    embeddings = pickle.load(f)
+                    if embeddings:  # Only add if the file has embeddings
+                        all_embeddings.append(embeddings)
+            except Exception as e:
+                console.print(f"[red]Error loading {file}: {e}[/red]")
+        
+        if not all_embeddings:
+            console.print("[bold red]No valid embeddings found.[/bold red]")
+            return
+        
+        if check_exit_requested():
+            return
+            
+        console.print(f"[bold green]Loaded embeddings from {len(all_embeddings)} files.[/bold green]")
+        
+        # Cluster embeddings
+        console.print("[bold cyan]Clustering speaker embeddings across files...[/bold cyan]")
+        cluster_results = cluster_embeddings(all_embeddings)
+        
+        if not cluster_results:
+            console.print("[bold red]Clustering failed. No results.[/bold red]")
+            return
+        
+        if check_exit_requested():
+            return
+            
+        # Verify clusters
+        console.print("[bold cyan]Verifying speaker clusters...[/bold cyan]")
+        user_input = console.input("[bold yellow]Do you want to verify speaker clusters? (y/n): [/bold yellow]").strip().lower()
+        
+        if check_exit_requested():
+            # Save partial results before exiting
+            save_global_mapping(cluster_results)
+            return
+            
+        if user_input == 'y':
+            verified_results, verified_clusters = verify_clusters(cluster_results)
+            
+            # Save results
+            save_global_mapping(verified_results)
+        else:
+            # Save results without verification
+            save_global_mapping(cluster_results)
+        
+        if check_exit_requested():
+            return
+            
+        # Update existing mappings
+        global_df = pd.read_csv(GLOBAL_MAPPING_FILE)
+        update_mappings_with_global_ids(global_df)
+        
+        console.print("[bold green]Cross-file speaker recognition complete![/bold green]")
+        console.print(f"[bold green]Results saved to {GLOBAL_MAPPING_FILE}[/bold green]")
     
-    # Update existing mappings
-    global_df = pd.read_csv(GLOBAL_MAPPING_FILE)
-    update_mappings_with_global_ids(global_df)
-    
-    console.print("[bold green]Cross-file speaker recognition complete![/bold green]")
-    console.print(f"[bold green]Results saved to {GLOBAL_MAPPING_FILE}[/bold green]")
+    except Exception as e:
+        console.print(f"\n[bold red]An unexpected error occurred: {e}[/bold red]")
+        import traceback
+        console.print(f"[red]{traceback.format_exc()}[/red]")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        console.print("\n[bold red]Program interrupted by user. Exiting...[/bold red]")
-    except Exception as e:
-        console.print(f"\n[bold red]An unexpected error occurred: {e}[/bold red]")
+        # This should be handled by our signal handler
+        pass
     finally:
         # Make sure we clean up sounddevice if necessary
         try:
