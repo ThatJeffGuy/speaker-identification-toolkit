@@ -28,7 +28,7 @@ The scripts require the following dependencies:
 2. **Extract Audio**: Run `dataset-creation.py` to extract English audio tracks (creates WAVs)
 3. **Diarize Speakers**: Run `diarize-dataset.py` to document timestamps of all speakers (creates JSONs)
 4. **Identify Target Speakers**: Run `identify-speaker.py` to mark your targeted speaker
-5. **Cross Reference**: Run `cross-reference.py` to save time with identifying the same speaker across multiple files. **CPU ONLY CURRENTLY, DEV'ING**
+5. **Cross Reference**: Run `cross-reference.py` to save time with identifying the same speaker across multiple files. **CPU ONLY, CURRENTLY DEV'ING CUDA**
 6. **Isolate Audio**: Run `isolate-trim.py` to automatically extract all segments of your targeted speaker (exports to `targeted` directory)
 
    You now have an isolated speaker dataset to which you can train a speaking or singing voice using [RVC](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI/tree/main) or [SVC](https://github.com/PlayVoice/whisper-vits-svc/tree/bigvgan-mix-v2), respectively!
